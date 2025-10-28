@@ -47,21 +47,25 @@ export async function testDatabaseConnection(): Promise<boolean> {
 
 // Redis连接配置
 // Railway 会自动提供 REDIS_URL，优先使用它
-const redisConfig = process.env.REDIS_URL
-  ? process.env.REDIS_URL
-  : {
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD || undefined,
-      retryStrategy: (times: number) => {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-      maxRetriesPerRequest: 3,
-    };
+function createRedisClient(): Redis {
+  if (process.env.REDIS_URL) {
+    return new Redis(process.env.REDIS_URL);
+  }
+
+  return new Redis({
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+    retryStrategy: (times: number) => {
+      const delay = Math.min(times * 50, 2000);
+      return delay;
+    },
+    maxRetriesPerRequest: 3,
+  });
+}
 
 // 创建Redis客户端
-export const redis = new Redis(redisConfig);
+export const redis = createRedisClient();
 
 // Redis事件监听
 redis.on('connect', () => {
@@ -77,10 +81,10 @@ redis.on('ready', () => {
 });
 
 // 创建Redis发布者（用于消息队列）
-export const redisPub = new Redis(redisConfig);
+export const redisPub = createRedisClient();
 
 // 创建Redis订阅者（用于消息队列）
-export const redisSub = new Redis(redisConfig);
+export const redisSub = createRedisClient();
 
 // 测试Redis连接
 export async function testRedisConnection(): Promise<boolean> {
