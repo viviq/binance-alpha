@@ -1,30 +1,32 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link as RouterLink, useLocation } from 'react-router-dom';
 import {
   ThemeProvider,
   createTheme,
-  Container,
   AppBar,
   Toolbar,
   Typography,
   Box,
-  Alert,
   Snackbar,
   IconButton,
   Tooltip,
+  Tabs,
+  Tab,
+  Alert,
 } from '@mui/material';
 import {
   Refresh,
   WifiOff,
   Wifi,
   NotificationsActive,
+  Home,
+  TrendingUp,
 } from '@mui/icons-material';
-import VirtualizedCoinTable from './components/VirtualizedCoinTable';
-import FilterPanel from './components/FilterPanel';
-import StatsCards from './components/StatsCards';
+import HomePage from './pages/HomePage';
+import FuturesPage from './pages/FuturesPage';
 import { useAppStore } from './store/useAppStore';
 import { ApiService } from './services/api';
 import { wsService } from './services/websocket';
-import { FilterOptions } from './types';
 
 // 将主题创建移到组件外部，避免每次渲染都重新创建
 const theme = createTheme({
@@ -95,17 +97,45 @@ const theme = createTheme({
   },
 });
 
+// 导航标签组件
+const NavigationTabs: React.FC = () => {
+  const location = useLocation();
+  const currentPath = location.pathname;
+
+  return (
+    <Tabs
+      value={currentPath}
+      textColor="inherit"
+      indicatorColor="primary"
+      sx={{ ml: 3 }}
+    >
+      <Tab
+        label="首页"
+        icon={<Home />}
+        iconPosition="start"
+        value="/"
+        component={RouterLink}
+        to="/"
+        sx={{ minHeight: 64 }}
+      />
+      <Tab
+        label="合约追踪"
+        icon={<TrendingUp />}
+        iconPosition="start"
+        value="/futures"
+        component={RouterLink}
+        to="/futures"
+        sx={{ minHeight: 64 }}
+      />
+    </Tabs>
+  );
+};
+
 const App: React.FC = () => {
   const {
-    coins,
-    stats,
-    filters,
-    loading,
-    error,
     connected,
     setCoins,
     setStats,
-    setFilters,
     setLoading,
     setError,
     setConnected,
@@ -116,9 +146,6 @@ const App: React.FC = () => {
 
   const [refreshing, setRefreshing] = useState(false);
   const [currentNotification, setCurrentNotification] = useState<string | null>(null);
-
-  // 使用 ref 跟踪上次的 filters 值，防止无限循环
-  const prevFiltersRef = useRef<string>();
 
   // 监听通知并显示
   const notifications = useAppStore(state => state.notifications);
@@ -134,7 +161,7 @@ const App: React.FC = () => {
   const loadData = useCallback(async () => {
     try {
       const [coinsData, statsData] = await Promise.all([
-        ApiService.getCoins(filters),
+        ApiService.getCoins({}),
         ApiService.getStats(),
       ]);
       setCoins(coinsData.items || coinsData);
@@ -143,22 +170,7 @@ const App: React.FC = () => {
       console.error('加载数据失败:', error);
       setError('加载数据失败，请稍后重试');
     }
-  }, [filters, setCoins, setStats, setError]);
-
-  const reloadWithFilters = useCallback(async () => {
-    if (!connected) return;
-    
-    setLoading(true);
-    try {
-      const coinsData = await ApiService.getCoins(filters);
-      setCoins(coinsData.items || coinsData);
-    } catch (error) {
-      console.error('重新加载数据失败:', error);
-      setError('重新加载数据失败');
-    } finally {
-      setLoading(false);
-    }
-  }, [filters, connected, setLoading, setCoins, setError]);
+  }, [setCoins, setStats, setError]);
 
   const setupWebSocketListeners = useCallback(() => {
     wsService.on('connected', () => {
@@ -257,37 +269,14 @@ const App: React.FC = () => {
     }
   }, [loadData, addNotification]);
 
-  const handleSort = useCallback((sortBy: string, sortOrder: 'asc' | 'desc') => {
-    setFilters({ sort_by: sortBy, sort_order: sortOrder });
-  }, [setFilters]);
-
   const handleCloseSnackbar = useCallback(() => {
     setCurrentNotification(null);
   }, []);
-
-  const handleFiltersChange = useCallback((newFilters: FilterOptions) => {
-    setFilters(newFilters);
-  }, [setFilters]);
-
-  const handleFiltersReset = useCallback(() => {
-    setFilters({});
-  }, [setFilters]);
 
   // 初始化数据
   useEffect(() => {
     initializeApp();
   }, [initializeApp]);
-
-  // 监听筛选变化，自动重新加载数据
-  useEffect(() => {
-    const filtersString = JSON.stringify(filters);
-
-    // 只在 filters 真正改变时才重新加载
-    if (connected && prevFiltersRef.current !== filtersString) {
-      prevFiltersRef.current = filtersString;
-      reloadWithFilters();
-    }
-  }, [filters, connected, reloadWithFilters]);
 
   // 监听WebSocket事件
   useEffect(() => {
@@ -299,84 +288,67 @@ const App: React.FC = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ flexGrow: 1 }}>
-        {/* 顶部导航栏 */}
-        <AppBar position="static" elevation={1}>
-          <Toolbar>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              币安Alpha监控系统
-            </Typography>
-            
-            {/* 连接状态 */}
-            <Tooltip title={connected ? '已连接' : '未连接'}>
-              <IconButton color="inherit">
-                {connected ? <Wifi /> : <WifiOff />}
-              </IconButton>
-            </Tooltip>
+      <Router>
+        <Box sx={{ flexGrow: 1 }}>
+          {/* 顶部导航栏 */}
+          <AppBar position="static" elevation={1}>
+            <Toolbar>
+              <Typography variant="h6" component="div">
+                币安Alpha监控系统
+              </Typography>
 
-            {/* 刷新按钮 */}
-            <Tooltip title="刷新数据">
-              <IconButton 
-                color="inherit" 
-                onClick={handleRefresh}
-                disabled={refreshing}
-              >
-                <Refresh />
-              </IconButton>
-            </Tooltip>
+              {/* 导航标签 */}
+              <NavigationTabs />
 
-            {/* 通知按钮 */}
-            <Tooltip title="通知">
-              <IconButton color="inherit">
-                <NotificationsActive />
-              </IconButton>
-            </Tooltip>
-          </Toolbar>
-        </AppBar>
+              {/* 右侧工具栏 */}
+              <Box sx={{ flexGrow: 1 }} />
 
-        <Container maxWidth="xl" sx={{ mt: 3, mb: 3 }}>
-          {/* 错误提示 */}
-          {error && (
-            <Alert 
-              severity="error" 
-              sx={{ mb: 2 }}
-              onClose={() => setError(null)}
-            >
-              {error}
+              {/* 连接状态 */}
+              <Tooltip title={connected ? '已连接' : '未连接'}>
+                <IconButton color="inherit">
+                  {connected ? <Wifi /> : <WifiOff />}
+                </IconButton>
+              </Tooltip>
+
+              {/* 刷新按钮 */}
+              <Tooltip title="刷新数据">
+                <IconButton
+                  color="inherit"
+                  onClick={handleRefresh}
+                  disabled={refreshing}
+                >
+                  <Refresh />
+                </IconButton>
+              </Tooltip>
+
+              {/* 通知按钮 */}
+              <Tooltip title="通知">
+                <IconButton color="inherit">
+                  <NotificationsActive />
+                </IconButton>
+              </Tooltip>
+            </Toolbar>
+          </AppBar>
+
+          {/* 路由内容 */}
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/futures" element={<FuturesPage />} />
+          </Routes>
+
+          {/* 通知Snackbar */}
+          <Snackbar
+            open={currentNotification !== null}
+            autoHideDuration={4000}
+            onClose={handleCloseSnackbar}
+            anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          >
+            <Alert onClose={handleCloseSnackbar} severity="info" variant="filled">
+              {currentNotification}
             </Alert>
-          )}
-
-          {/* 统计卡片 */}
-          {stats && <StatsCards stats={stats} loading={loading} />}
-
-          {/* 筛选面板 */}
-          <FilterPanel
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onReset={handleFiltersReset}
-          />
-
-          {/* 币对表格 */}
-          <VirtualizedCoinTable
-            coins={coins}
-            loading={loading}
-            onSort={handleSort}
-            filters={filters}
-          />
-        </Container>
-
-        {/* 通知Snackbar */}
-        <Snackbar
-          open={currentNotification !== null}
-          autoHideDuration={4000}
-          onClose={handleCloseSnackbar}
-          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-        >
-          <Alert onClose={handleCloseSnackbar} severity="info" variant="filled">
-            {currentNotification}
-          </Alert>
-        </Snackbar>
-      </Box>
+          </Snackbar>
+        </Box>
+      </Router>
     </ThemeProvider>
   );
 };
