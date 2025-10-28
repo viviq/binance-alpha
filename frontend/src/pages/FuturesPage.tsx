@@ -26,10 +26,22 @@ import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { CoinData } from '../types';
 import { useAppStore } from '../store/useAppStore';
+import { ApiService } from '../services/api';
+
+interface UpcomingFuture {
+  symbol: string;
+  name?: string;
+  announcement_title: string;
+  announcement_url: string;
+  expected_listing_date?: string;
+  expected_listing_time?: string;
+  created_at: string;
+}
 
 const FuturesPage: React.FC = () => {
   const { coins, loading, error } = useAppStore();
   const [futuresCoins, setFuturesCoins] = useState<CoinData[]>([]);
+  const [upcomingFutures, setUpcomingFutures] = useState<UpcomingFuture[]>([]);
 
   // 筛选和排序有合约的币种
   useEffect(() => {
@@ -42,6 +54,23 @@ const FuturesPage: React.FC = () => {
       });
     setFuturesCoins(filtered);
   }, [coins]);
+
+  // 获取即将上线的合约
+  useEffect(() => {
+    const fetchUpcomingFutures = async () => {
+      try {
+        const data = await ApiService.getUpcomingFutures();
+        setUpcomingFutures(data);
+      } catch (error) {
+        console.error('获取即将上线合约失败:', error);
+      }
+    };
+
+    fetchUpcomingFutures();
+    // 每分钟刷新一次
+    const interval = setInterval(fetchUpcomingFutures, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const formatTime = useCallback((dateString: string) => {
     try {
@@ -159,7 +188,85 @@ const FuturesPage: React.FC = () => {
         </Paper>
       </Box>
 
-      {/* 合约列表 */}
+      {/* 即将上线的合约 */}
+      {upcomingFutures.length > 0 && (
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Schedule />
+            即将上线的合约
+          </Typography>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell width="100">币种</TableCell>
+                  <TableCell>公告标题</TableCell>
+                  <TableCell width="150">预计上线时间</TableCell>
+                  <TableCell width="100">查看公告</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {upcomingFutures.map((future) => (
+                  <TableRow
+                    key={future.symbol}
+                    sx={{
+                      backgroundColor: 'warning.50',
+                      '&:hover': { backgroundColor: 'warning.100' },
+                    }}
+                  >
+                    <TableCell>
+                      <Typography variant="body1" fontWeight="bold">
+                        {future.symbol}
+                      </Typography>
+                      {future.name && (
+                        <Typography variant="caption" color="text.secondary">
+                          {future.name}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {future.announcement_title}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {future.expected_listing_time
+                          ? formatTime(future.expected_listing_time)
+                          : future.expected_listing_date
+                          ? new Date(future.expected_listing_date).toLocaleDateString('zh-CN')
+                          : '待确认'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Link
+                        href={future.announcement_url}
+                        target="_blank"
+                        rel="noopener"
+                        sx={{ display: 'flex', alignItems: 'center' }}
+                      >
+                        <Chip
+                          label="查看"
+                          size="small"
+                          icon={<OpenInNew fontSize="small" />}
+                          clickable
+                          color="warning"
+                          sx={{ height: 24, fontSize: '0.75rem' }}
+                        />
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
+
+      {/* 已上线合约列表 */}
+      <Typography variant="h5" gutterBottom sx={{ mt: 4, mb: 2 }}>
+        已上线的合约
+      </Typography>
       <TableContainer component={Paper}>
         <Table>
           <TableHead>

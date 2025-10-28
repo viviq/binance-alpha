@@ -195,6 +195,22 @@ export class ApiService {
     cacheManager.clear();
   }
 
+  // 获取即将上线的合约
+  static async getUpcomingFutures(): Promise<any[]> {
+    try {
+      const response = await api.get<ApiResponse<any[]>>('/upcoming-futures');
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || '获取即将上线合约失败');
+      }
+
+      return response.data.data || [];
+    } catch (error) {
+      console.error('获取即将上线合约失败:', error);
+      return [];
+    }
+  }
+
   // 获取价格历史数据
   static async getPriceHistory(symbol: string, period: string = '24h'): Promise<any[]> {
     try {
