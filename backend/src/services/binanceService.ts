@@ -28,22 +28,27 @@ export class BinanceService {
   }
 
   private setupInterceptors(): void {
-    // 请求拦截器
+    // 请求拦截器（生产环境禁用详细日志）
     const requestInterceptor = (config: any) => {
-      console.log(`API请求: ${config.method?.toUpperCase()} ${config.url}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`API请求: ${config.method?.toUpperCase()} ${config.url}`);
+      }
       return config;
     };
 
     // 响应拦截器
     const responseInterceptor = (response: any) => response;
     const errorInterceptor = (error: any) => {
-      console.error('API请求失败:', error.message);
+      // 只记录非 451 错误
+      if (error.response?.status !== 451 && process.env.NODE_ENV !== 'production') {
+        console.error('API请求失败:', error.message);
+      }
       return Promise.reject(error);
     };
 
     this.spotApi.interceptors.request.use(requestInterceptor);
     this.spotApi.interceptors.response.use(responseInterceptor, errorInterceptor);
-    
+
     this.futuresApi.interceptors.request.use(requestInterceptor);
     this.futuresApi.interceptors.response.use(responseInterceptor, errorInterceptor);
   }

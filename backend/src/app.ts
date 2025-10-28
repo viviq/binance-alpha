@@ -180,11 +180,16 @@ server.listen(PORT, async () => {
   logger.info(`服务器启动成功，端口: ${PORT}`);
   logger.info(`WebSocket服务器已启动`);
 
-  // 初始化数据库
-  await initializeDatabase();
+  try {
+    // 初始化数据库
+    await initializeDatabase();
 
-  // 初始化数据
-  await initializeData();
+    // 初始化数据
+    await initializeData();
+  } catch (error) {
+    logger.error('初始化失败，但服务器继续运行:', error);
+    // 不要让服务器崩溃，继续运行以提供健康检查接口
+  }
 });
 
 export default app;

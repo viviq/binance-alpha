@@ -87,7 +87,7 @@ export class DataCollector {
         batchResults.forEach((result, index) => {
           if (result.status === 'fulfilled' && result.value) {
             coinDataList.push(result.value);
-          } else {
+          } else if (process.env.NODE_ENV !== 'production') {
             logger.error(`处理币种 ${batch[index].symbol} 失败:`, result.status === 'rejected' ? result.reason : 'Unknown error');
           }
         });
