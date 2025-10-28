@@ -210,34 +210,35 @@ export class BinanceService {
           // 计算市值和流通量
           let marketCap: number | null = null;
           let circulatingSupply: number | null = null;
-          
+
           const currentPrice = priceData ? parseFloat(priceData.lastPrice) : parseFloat(token.price || '0');
-          
-          if (priceData && priceData.quoteVolume && currentPrice > 0) {
-            // 使用24h quoteVolume来估算市值
-            // 市值估算：假设日交易量约为市值的0.5-5%
-            // 更保守的估算：将月交易量（quoteVolume * 30）估算为市值
-            const volume24h = parseFloat(priceData.quoteVolume);
-            if (volume24h > 0) {
-              marketCap = volume24h * 30; // 将月交易量作为市值参考
-              circulatingSupply = marketCap / currentPrice;
-            }
+
+          // 1. 优先使用Alpha API提供的真实数据
+          const tokenMarketCap = parseFloat(token.marketCap || '0');
+          const tokenCirculatingSupply = parseFloat(token.circulatingSupply || '0');
+
+          if (tokenMarketCap > 0) {
+            marketCap = tokenMarketCap;
           }
-          
-          // 如果没有API数据，使用token数据或计算
-          if (!marketCap || marketCap === 0) {
-            const tokenMarketCap = parseFloat(token.marketCap || '0');
-            if (tokenMarketCap > 0) {
-              marketCap = tokenMarketCap;
-            } else if (currentPrice > 0) {
-              // 完全模拟：基于价格生成合理市值
-              marketCap = this.estimateMarketCapFromPrice(currentPrice);
-              circulatingSupply = this.estimateSupplyFromPrice(currentPrice);
-            }
+
+          if (tokenCirculatingSupply > 0) {
+            circulatingSupply = tokenCirculatingSupply;
           }
-          
-          if (!circulatingSupply || circulatingSupply === 0) {
-            circulatingSupply = token.circulatingSupply || this.estimateSupplyFromPrice(currentPrice);
+
+          // 2. 如果有价格和流通量，但没有市值，计算市值
+          if (!marketCap && currentPrice > 0 && circulatingSupply && circulatingSupply > 0) {
+            marketCap = currentPrice * circulatingSupply;
+          }
+
+          // 3. 如果有价格和市值，但没有流通量，反算流通量
+          if (!circulatingSupply && currentPrice > 0 && marketCap && marketCap > 0) {
+            circulatingSupply = marketCap / currentPrice;
+          }
+
+          // 4. 如果仍然没有数据，使用估算方法
+          if ((!marketCap || marketCap === 0) && currentPrice > 0) {
+            circulatingSupply = this.estimateSupplyFromPrice(currentPrice);
+            marketCap = currentPrice * circulatingSupply;
           }
 
           const coinData: Partial<CoinData> = {
