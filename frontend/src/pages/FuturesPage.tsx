@@ -282,7 +282,12 @@ const FuturesPage: React.FC = () => {
               <TableCell align="right" width="120">现货价格</TableCell>
               <TableCell align="right" width="120">合约价格</TableCell>
               <TableCell align="right" width="100">24h涨跌</TableCell>
-              <TableCell align="right" width="120">市值</TableCell>
+              <TableCell align="right" width="110">流通市值</TableCell>
+              <TableCell align="right" width="110">
+                <Tooltip title="完全稀释市值，基于估算">
+                  <span>FDV估算</span>
+                </Tooltip>
+              </TableCell>
               <TableCell align="right" width="120">未平仓量</TableCell>
               <TableCell align="right" width="120">24h成交量</TableCell>
               <TableCell width="100">链接</TableCell>
@@ -291,7 +296,7 @@ const FuturesPage: React.FC = () => {
           <TableBody>
             {futuresCoins.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={10} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     暂无合约数据
                   </Typography>
@@ -381,6 +386,18 @@ const FuturesPage: React.FC = () => {
                   </TableCell>
 
                   <TableCell align="right">
+                    <Tooltip title="基于流通市值估算，假设总供应量约为流通量的2倍">
+                      <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                        {coin.market_cap && coin.market_cap > 0 ? (
+                          <>~{formatLargeNumber(coin.market_cap * 2)}</>
+                        ) : (
+                          '-'
+                        )}
+                      </Typography>
+                    </Tooltip>
+                  </TableCell>
+
+                  <TableCell align="right">
                     <Typography variant="body2">
                       {formatLargeNumber(coin.futures_data?.open_interest)}
                     </Typography>
@@ -440,6 +457,14 @@ const FuturesPage: React.FC = () => {
         <br />
         <Typography variant="caption" color="text.secondary">
           * 绿色背景表示今日新上线的合约
+        </Typography>
+        <br />
+        <Typography variant="caption" color="text.secondary">
+          * 价格数据优先级：现货价格 &gt; 合约价格 &gt; 链上价格，确保数据准确性
+        </Typography>
+        <br />
+        <Typography variant="caption" color="text.secondary">
+          * FDV为估算值，基于流通市值×2计算（假设总供应量约为流通量的2倍）
         </Typography>
       </Box>
     </Container>

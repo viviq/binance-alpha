@@ -2,6 +2,8 @@ import React, { useCallback } from 'react';
 import {
   Container,
   Alert,
+  Box,
+  Typography,
 } from '@mui/material';
 import VirtualizedCoinTable from '../components/VirtualizedCoinTable';
 import FilterPanel from '../components/FilterPanel';
@@ -62,6 +64,25 @@ const HomePage: React.FC = () => {
         onSort={handleSort}
         filters={filters}
       />
+
+      {/* 数据说明 */}
+      <Box sx={{ mt: 2, mb: 2 }}>
+        <Typography variant="caption" color="text.secondary">
+          * 数据更新频率：每分钟，确保实时性
+        </Typography>
+        <br />
+        <Typography variant="caption" color="text.secondary">
+          * 价格数据优先级：现货价格 &gt; 合约价格 &gt; 链上价格，确保准确性
+        </Typography>
+        <br />
+        <Typography variant="caption" color="text.secondary">
+          * 流通市值 = 当前价格 × 流通供应量，使用实时数据计算
+        </Typography>
+        <br />
+        <Typography variant="caption" color="text.secondary">
+          * FDV为估算值，基于流通市值×2计算（假设总供应量约为流通量的2倍）
+        </Typography>
+      </Box>
     </Container>
   );
 };
