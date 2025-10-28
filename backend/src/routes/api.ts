@@ -219,13 +219,25 @@ router.get('/upcoming-futures', async (req: Request, res: Response) => {
     };
 
     res.json(response);
-  } catch (error) {
+  } catch (error: any) {
     console.error('获取即将上线合约失败:', error);
-    res.status(500).json({
-      success: false,
-      error: '服务器内部错误',
-      timestamp: new Date().toISOString()
-    });
+
+    // 如果表不存在，返回空数组而不是错误（表会在数据库初始化时创建）
+    if (error.code === '42P01') {
+      console.warn('upcoming_futures表尚未创建，返回空数组');
+      const response: ApiResponse<any[]> = {
+        success: true,
+        data: [],
+        timestamp: new Date().toISOString()
+      };
+      res.json(response);
+    } else {
+      res.status(500).json({
+        success: false,
+        error: '服务器内部错误',
+        timestamp: new Date().toISOString()
+      });
+    }
   }
 });
 

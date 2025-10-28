@@ -456,8 +456,11 @@ export class DataCollector {
           logger.info(`成功保存 ${upcomingFutures.length} 个即将上线的合约`);
         }
       }
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
+    } catch (error: any) {
+      // 如果表不存在，只记录警告而不是错误
+      if (error.code === '42P01') {
+        logger.warn('upcoming_futures表尚未创建，跳过即将上线合约抓取');
+      } else if (process.env.NODE_ENV !== 'production') {
         logger.error('抓取即将上线合约失败:', error);
       }
     }
