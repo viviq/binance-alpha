@@ -60,10 +60,12 @@ export class BinanceService {
       const symbols = response.data.symbols
         .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
         .map((s: any) => s.symbol);
-      
+
       return symbols;
     } catch (error) {
-      console.error('获取交易对失败:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('获取交易对失败:', error);
+      }
       return [];
     }
   }
@@ -74,8 +76,11 @@ export class BinanceService {
       const params = symbol ? { symbol } : {};
       const response = await this.spotApi.get('/ticker/24hr', { params });
       return Array.isArray(response.data) ? response.data : [response.data];
-    } catch (error) {
-      console.error('获取价格统计失败:', error);
+    } catch (error: any) {
+      // 生产环境静默错误，避免日志爆炸
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('获取价格统计失败:', error.message);
+      }
       return [];
     }
   }
@@ -89,7 +94,10 @@ export class BinanceService {
       const price = parseFloat(response.data.price);
       return isNaN(price) ? null : price;
     } catch (error) {
-      console.error(`获取${symbol}价格失败:`, error);
+      // 生产环境静默错误
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`获取${symbol}价格失败:`, error);
+      }
       return null;
     }
   }
@@ -118,7 +126,9 @@ export class BinanceService {
       const response = await this.futuresApi.get('/ticker/24hr', { params });
       return Array.isArray(response.data) ? response.data : [response.data];
     } catch (error) {
-      console.error('获取合约统计失败:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('获取合约统计失败:', error);
+      }
       return [];
     }
   }
@@ -132,7 +142,9 @@ export class BinanceService {
       const openInterest = parseFloat(response.data.openInterest);
       return isNaN(openInterest) ? null : openInterest;
     } catch (error) {
-      console.error(`获取${symbol}未平仓量失败:`, error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`获取${symbol}未平仓量失败:`, error);
+      }
       return null;
     }
   }
@@ -164,11 +176,15 @@ export class BinanceService {
 
       // 如果没有获取到数据，使用模拟数据
       if (!alphaTokens || alphaTokens.length === 0) {
-        console.log('Alpha API 返回空数据，使用模拟数据');
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Alpha API 返回空数据，使用模拟数据');
+        }
         return this.getMockAlphaCoins();
       }
 
-      console.log(`获取到 ${alphaTokens.length} 个Alpha币种`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`获取到 ${alphaTokens.length} 个Alpha币种`);
+      }
 
       const alphaCoins: Partial<CoinData>[] = [];
 
@@ -186,7 +202,9 @@ export class BinanceService {
               priceData = ticker[0];
             }
           } catch (error) {
-            console.log(`${spotSymbol} 暂无现货数据`);
+            if (process.env.NODE_ENV !== 'production') {
+              console.log(`${spotSymbol} 暂无现货数据`);
+            }
           }
 
           // 计算市值和流通量
@@ -240,13 +258,17 @@ export class BinanceService {
 
           alphaCoins.push(coinData);
         } catch (error) {
-          console.error(`处理Alpha币种 ${token.symbol} 数据失败:`, error);
+          if (process.env.NODE_ENV !== 'production') {
+            console.error(`处理Alpha币种 ${token.symbol} 数据失败:`, error);
+          }
         }
       }
 
       return alphaCoins;
     } catch (error) {
-      console.error('获取Alpha币对失败:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('获取Alpha币对失败:', error);
+      }
       // 如果获取真实Alpha数据失败，返回模拟数据
       return this.getMockAlphaCoins();
     }
@@ -293,13 +315,17 @@ export class BinanceService {
               }
           }
         } catch (error) {
-          console.error(`处理币对 ${symbol} 数据失败:`, error);
+          if (process.env.NODE_ENV !== 'production') {
+            console.error(`处理币对 ${symbol} 数据失败:`, error);
+          }
         }
       }
 
       return alphaCoins;
     } catch (error) {
-      console.error('获取模拟Alpha币对失败:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('获取模拟Alpha币对失败:', error);
+      }
       return this.generateFallbackMockData();
     }
   }
@@ -448,7 +474,9 @@ export class BinanceService {
 
       return { is_listed: false };
     } catch (error) {
-      console.error(`检查${symbol}合约状态失败:`, error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.error(`检查${symbol}合约状态失败:`, error);
+      }
       return { is_listed: false };
     }
   }
