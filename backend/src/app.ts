@@ -6,6 +6,7 @@ import cron from 'node-cron';
 import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { logger } from './utils/logger';
 import { testDatabaseConnection, testRedisConnection, closeConnections } from './database/config';
+import { initializeDatabase as initDb } from './database/initDb';
 import apiRoutes from './routes/api';
 import { WebSocketServer } from './websocket/server';
 import { DataCollector } from './services/dataCollector';
@@ -134,6 +135,9 @@ async function initializeDatabase() {
     }
 
     logger.info('所有数据库连接测试通过');
+
+    // 初始化数据库表结构
+    await initDb();
   } catch (error) {
     logger.error('数据库初始化失败:', error);
     process.exit(1);

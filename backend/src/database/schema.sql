@@ -14,12 +14,12 @@ CREATE TABLE IF NOT EXISTS coins (
     chain_id VARCHAR(50),
     contract_address VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    INDEX idx_symbol (symbol),
-    INDEX idx_alpha_listing_time (alpha_listing_time),
-    INDEX idx_is_active (is_active)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_coins_symbol ON coins(symbol);
+CREATE INDEX IF NOT EXISTS idx_coins_alpha_listing_time ON coins(alpha_listing_time);
+CREATE INDEX IF NOT EXISTS idx_coins_is_active ON coins(is_active);
 
 -- 价格历史数据表（时序数据）
 CREATE TABLE IF NOT EXISTS price_history (
@@ -31,18 +31,18 @@ CREATE TABLE IF NOT EXISTS price_history (
     market_cap DECIMAL(20, 2),
     circulating_supply DECIMAL(20, 2),
     price_change_24h DECIMAL(10, 4),
-    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    INDEX idx_coin_id (coin_id),
-    INDEX idx_symbol (symbol),
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_coin_timestamp (coin_id, timestamp)
+    timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_price_history_coin_id ON price_history(coin_id);
+CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol);
+CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
+CREATE INDEX IF NOT EXISTS idx_price_history_coin_timestamp ON price_history(coin_id, timestamp);
 
 -- 合约数据表
 CREATE TABLE IF NOT EXISTS futures_data (
     id SERIAL PRIMARY KEY,
-    coin_id INTEGER NOT NULL REFERENCES coins(id) ON DELETE CASCADE,
+    coin_id INTEGER NOT NULL REFERENCES coins(id) ON DELETE CASCADE UNIQUE,
     symbol VARCHAR(50) NOT NULL,
     is_listed BOOLEAN DEFAULT false,
     listing_time TIMESTAMP,
@@ -56,13 +56,12 @@ CREATE TABLE IF NOT EXISTS futures_data (
     mark_price DECIMAL(20, 8),
     index_price DECIMAL(20, 8),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    UNIQUE KEY unique_coin (coin_id),
-    INDEX idx_symbol (symbol),
-    INDEX idx_is_listed (is_listed),
-    INDEX idx_listing_time (listing_time)
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_futures_data_symbol ON futures_data(symbol);
+CREATE INDEX IF NOT EXISTS idx_futures_data_is_listed ON futures_data(is_listed);
+CREATE INDEX IF NOT EXISTS idx_futures_data_listing_time ON futures_data(listing_time);
 
 -- 通知历史表
 CREATE TABLE IF NOT EXISTS notifications (
@@ -72,13 +71,13 @@ CREATE TABLE IF NOT EXISTS notifications (
     message TEXT NOT NULL,
     coin_symbol VARCHAR(50),
     is_read BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-    INDEX idx_type (type),
-    INDEX idx_coin_symbol (coin_symbol),
-    INDEX idx_created_at (created_at),
-    INDEX idx_is_read (is_read)
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(type);
+CREATE INDEX IF NOT EXISTS idx_notifications_coin_symbol ON notifications(coin_symbol);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 
 -- 数据收集任务日志表
 CREATE TABLE IF NOT EXISTS collection_logs (
@@ -89,12 +88,12 @@ CREATE TABLE IF NOT EXISTS collection_logs (
     duration_ms INTEGER,
     error_message TEXT,
     started_at TIMESTAMP NOT NULL,
-    completed_at TIMESTAMP,
-
-    INDEX idx_task_type (task_type),
-    INDEX idx_status (status),
-    INDEX idx_started_at (started_at)
+    completed_at TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_collection_logs_task_type ON collection_logs(task_type);
+CREATE INDEX IF NOT EXISTS idx_collection_logs_status ON collection_logs(status);
+CREATE INDEX IF NOT EXISTS idx_collection_logs_started_at ON collection_logs(started_at);
 
 -- 创建更新时间触发器函数
 CREATE OR REPLACE FUNCTION update_updated_at_column()
