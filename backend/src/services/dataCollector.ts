@@ -128,21 +128,35 @@ export class DataCollector {
         ? tickerDataResult.value[0] 
         : null;
 
-      // 优先使用币安Alpha API提供的真实价格数据
+      // 价格数据获取逻辑：优先使用更可靠的价格源
       let currentPrice: number | null = null;
       let volume24h: number | null = null;
       let priceChange24h: number | null = null;
 
-      // 首先使用Alpha API的价格数据
-      if (alphaCoin.current_price && alphaCoin.current_price > 0) {
-        currentPrice = alphaCoin.current_price;
-        volume24h = alphaCoin.volume_24h || null;
-        priceChange24h = alphaCoin.price_change || null;
-      } else if (tickerData) {
-        // 使用现货交易对数据
+      // 判断是否有现货交易对
+      const hasSpotMarket = tickerData !== null;
+      // 判断是否有合约交易对
+      const hasFuturesMarket = futuresData?.is_listed === true && futuresData?.futures_price;
+
+      // 价格优先级：
+      // 1. 如果有现货，使用现货价格（最准确）
+      // 2. 如果没有现货但有合约，使用合约价格（比链上DEX价格更准确）
+      // 3. 最后才使用Alpha API的链上价格
+      if (hasSpotMarket && tickerData) {
+        // 使用现货交易对数据（最优先）
         currentPrice = parseFloat(tickerData.lastPrice);
         volume24h = parseFloat(tickerData.volume);
         priceChange24h = parseFloat(tickerData.priceChangePercent);
+      } else if (!hasSpotMarket && hasFuturesMarket && futuresData) {
+        // 没有现货但有合约，使用合约价格
+        currentPrice = futuresData.futures_price ?? null;
+        volume24h = futuresData.futures_volume_24h ?? alphaCoin.volume_24h ?? null;
+        priceChange24h = alphaCoin.price_change ?? null;
+      } else if (alphaCoin.current_price && alphaCoin.current_price > 0) {
+        // 最后使用Alpha API的链上价格
+        currentPrice = alphaCoin.current_price;
+        volume24h = alphaCoin.volume_24h || null;
+        priceChange24h = alphaCoin.price_change || null;
       }
 
       // 生成合理的模拟数据作为补充
@@ -150,15 +164,23 @@ export class DataCollector {
       const simulatedVolume = volume24h || this.generateReasonableVolume(simulatedPrice);
       const simulatedPriceChange24h = priceChange24h !== null ? priceChange24h : this.generateReasonablePriceChange();
 
-      // 优先使用币安API提供的真实市值和流通量数据
+      // 市值和流通量数据处理
       let marketCap = alphaCoin.market_cap;
       let circulatingSupply = alphaCoin.circulating_supply;
-      
-      // 如果没有真实数据，则生成合理的模拟数据
+
+      // 如果没有流通量数据，生成合理的估算
       if (!circulatingSupply) {
         circulatingSupply = this.generateReasonableCirculatingSupply(simulatedPrice);
       }
-      if (!marketCap || marketCap === 0) {
+
+      // 市值计算逻辑：
+      // 1. 如果使用了合约价格（而不是链上价格），需要重新计算市值
+      // 2. 因为Alpha API提供的市值是基于链上价格计算的，会不准确
+      if (!hasSpotMarket && hasFuturesMarket && futuresData && currentPrice) {
+        // 使用合约价格重新计算市值
+        marketCap = this.calculateMarketCap(currentPrice, circulatingSupply);
+      } else if (!marketCap || marketCap === 0) {
+        // 如果没有市值数据，使用当前价格计算
         marketCap = this.calculateMarketCap(simulatedPrice, circulatingSupply);
       }
 
