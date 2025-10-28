@@ -336,6 +336,114 @@ export class DatabaseService {
     logger.info(`清理了 ${result.rowCount} 条旧的价格历史记录`);
     return result.rowCount || 0;
   }
+
+  // ========== 即将上线合约相关操作 ==========
+
+  // 保存或更新即将上线的合约
+  async upsertUpcomingFutures(data: {
+    symbol: string;
+    name?: string;
+    announcementId: string;
+    announcementTitle: string;
+    announcementUrl: string;
+    expectedListingDate?: Date;
+    expectedListingTime?: Date;
+  }): Promise<void> {
+    const query = `
+      INSERT INTO upcoming_futures (
+        symbol, name, announcement_id, announcement_title, announcement_url,
+        expected_listing_date, expected_listing_time, status
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+      ON CONFLICT (announcement_id)
+      DO UPDATE SET
+        symbol = EXCLUDED.symbol,
+        name = EXCLUDED.name,
+        announcement_title = EXCLUDED.announcement_title,
+        announcement_url = EXCLUDED.announcement_url,
+        expected_listing_date = EXCLUDED.expected_listing_date,
+        expected_listing_time = EXCLUDED.expected_listing_time,
+        updated_at = CURRENT_TIMESTAMP
+    `;
+
+    await pool.query(query, [
+      data.symbol,
+      data.name || null,
+      data.announcementId,
+      data.announcementTitle,
+      data.announcementUrl,
+      data.expectedListingDate || null,
+      data.expectedListingTime || null,
+    ]);
+  }
+
+  // 批量保存即将上线的合约
+  async batchUpsertUpcomingFutures(dataList: Array<{
+    symbol: string;
+    name?: string;
+    announcementId: string;
+    announcementTitle: string;
+    announcementUrl: string;
+    expectedListingDate?: Date;
+    expectedListingTime?: Date;
+  }>): Promise<void> {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const data of dataList) {
+        await this.upsertUpcomingFutures(data);
+      }
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // 获取即将上线的合约列表
+  async getUpcomingFutures(status: string = 'pending'): Promise<any[]> {
+    const query = `
+      SELECT *
+      FROM upcoming_futures
+      WHERE status = $1
+      ORDER BY
+        CASE
+          WHEN expected_listing_time IS NOT NULL THEN expected_listing_time
+          WHEN expected_listing_date IS NOT NULL THEN expected_listing_date
+          ELSE created_at
+        END DESC
+    `;
+
+    const result = await pool.query(query, [status]);
+    return result.rows;
+  }
+
+  // 将即将上线的合约标记为已上线
+  async markUpcomingFuturesAsListed(symbol: string): Promise<void> {
+    const query = `
+      UPDATE upcoming_futures
+      SET status = 'listed', updated_at = CURRENT_TIMESTAMP
+      WHERE symbol = $1 AND status = 'pending'
+    `;
+
+    await pool.query(query, [symbol]);
+  }
+
+  // 清理旧的即将上线合约记录
+  async cleanupOldUpcomingFutures(daysToKeep: number = 30): Promise<number> {
+    const query = `
+      DELETE FROM upcoming_futures
+      WHERE status = 'listed'
+      AND updated_at < NOW() - INTERVAL '${daysToKeep} days'
+    `;
+
+    const result = await pool.query(query);
+    return result.rowCount || 0;
+  }
 }
 
 export const dbService = new DatabaseService();

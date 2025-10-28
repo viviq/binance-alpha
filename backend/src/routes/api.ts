@@ -207,6 +207,28 @@ router.get('/coins/:symbol/history', async (req: Request, res: Response) => {
   }
 });
 
+// 获取即将上线的合约
+router.get('/upcoming-futures', async (req: Request, res: Response) => {
+  try {
+    const upcomingFutures = await dbService.getUpcomingFutures('pending');
+
+    const response: ApiResponse<any[]> = {
+      success: true,
+      data: upcomingFutures,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  } catch (error) {
+    console.error('获取即将上线合约失败:', error);
+    res.status(500).json({
+      success: false,
+      error: '服务器内部错误',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 健康检查
 router.get('/health', (req: Request, res: Response) => {
   res.json({

@@ -154,6 +154,31 @@ WHERE c.is_active = true;
 -- 创建索引优化查询性能
 CREATE INDEX IF NOT EXISTS idx_price_history_latest
     ON price_history (coin_id, timestamp DESC);
+
+-- 即将上线合约表
+CREATE TABLE IF NOT EXISTS upcoming_futures (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(50) NOT NULL,
+    name VARCHAR(100),
+    announcement_id VARCHAR(100) UNIQUE,
+    announcement_title TEXT,
+    announcement_url TEXT,
+    expected_listing_date DATE,
+    expected_listing_time TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'pending', -- pending, listed, cancelled
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_upcoming_futures_symbol ON upcoming_futures(symbol);
+CREATE INDEX IF NOT EXISTS idx_upcoming_futures_status ON upcoming_futures(status);
+CREATE INDEX IF NOT EXISTS idx_upcoming_futures_expected_time ON upcoming_futures(expected_listing_time);
+
+DROP TRIGGER IF EXISTS update_upcoming_futures_updated_at ON upcoming_futures;
+CREATE TRIGGER update_upcoming_futures_updated_at
+    BEFORE UPDATE ON upcoming_futures
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
 `;
 
 export async function initializeDatabase(): Promise<void> {

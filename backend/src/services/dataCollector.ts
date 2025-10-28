@@ -2,6 +2,7 @@ import { BinanceService } from './binanceService';
 import { dbService } from '../database/dbService';
 import { messageQueue } from './messageQueue';
 import { logger } from '../utils/logger';
+import { announcementService } from './announcementService';
 import { CoinData, FuturesData } from '../types';
 
 export class DataCollector {
@@ -32,6 +33,15 @@ export class DataCollector {
 
       // 执行一次数据收集
       await this.collectAllData();
+
+      // 抓取即将上线的合约（每次数据采集时更新）
+      try {
+        await this.collectUpcomingFutures();
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          logger.error('抓取即将上线合约失败:', error);
+        }
+      }
 
       const duration = Date.now() - startTime;
       await dbService.completeCollectionLog(logId, 'success', this.existingCoins.size, duration);
@@ -395,6 +405,40 @@ export class DataCollector {
       marketCap: validMarketCap,
       circulatingSupply: validCirculatingSupply
     };
+  }
+
+  // 抓取即将上线的合约
+  private async collectUpcomingFutures(): Promise<void> {
+    try {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.info('开始抓取即将上线的合约...');
+      }
+
+      const upcomingFutures = await announcementService.getUpcomingFutures();
+
+      if (upcomingFutures.length > 0) {
+        // 保存到数据库
+        const dataList = upcomingFutures.map(item => ({
+          symbol: item.symbol,
+          name: item.name,
+          announcementId: item.announcementId,
+          announcementTitle: item.announcementTitle,
+          announcementUrl: item.announcementUrl,
+          expectedListingDate: item.expectedListingDate,
+          expectedListingTime: item.expectedListingDate,
+        }));
+
+        await dbService.batchUpsertUpcomingFutures(dataList);
+
+        if (process.env.NODE_ENV !== 'production') {
+          logger.info(`成功保存 ${upcomingFutures.length} 个即将上线的合约`);
+        }
+      }
+    } catch (error) {
+      if (process.env.NODE_ENV !== 'production') {
+        logger.error('抓取即将上线合约失败:', error);
+      }
+    }
   }
 
   // 获取收集状态
