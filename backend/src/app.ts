@@ -135,29 +135,22 @@ if (process.env.NODE_ENV === 'production') {
 
 // 初始化数据库连接
 async function initializeDatabase() {
-  try {
-    logger.info('正在测试数据库连接...');
-    const pgConnected = await testDatabaseConnection();
-    const redisConnected = await testRedisConnection();
+  logger.info('正在测试数据库连接...');
+  const pgConnected = await testDatabaseConnection();
+  const redisConnected = await testRedisConnection();
 
-    if (!pgConnected) {
-      logger.error('PostgreSQL连接失败，系统无法正常运行');
-      process.exit(1);
-    }
-
-    if (!redisConnected) {
-      logger.error('Redis连接失败，系统无法正常运行');
-      process.exit(1);
-    }
-
-    logger.info('所有数据库连接测试通过');
-
-    // 初始化数据库表结构
-    await initDb();
-  } catch (error) {
-    logger.error('数据库初始化失败:', error);
-    process.exit(1);
+  if (!pgConnected) {
+    throw new Error('PostgreSQL连接失败');
   }
+
+  if (!redisConnected) {
+    throw new Error('Redis连接失败');
+  }
+
+  logger.info('所有数据库连接测试通过');
+
+  // 初始化数据库表结构
+  await initDb();
 }
 
 // 启动时执行一次数据采集（生产环境延迟启动）
