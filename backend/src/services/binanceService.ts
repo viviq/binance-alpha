@@ -93,11 +93,15 @@ export class BinanceService {
   async getFuturesInfo(): Promise<any[]> {
     try {
       const response = await this.futuresApi.get('/exchangeInfo');
-      return response.data.symbols.filter((s: any) => 
+      return response.data.symbols.filter((s: any) =>
         s.status === 'TRADING' && s.quoteAsset === 'USDT'
       );
-    } catch (error) {
-      console.error('获取合约信息失败:', error);
+    } catch (error: any) {
+      if (error.response?.status === 451) {
+        console.log('合约 API 访问受限 (451)');
+      } else {
+        console.error('获取合约信息失败:', error.message);
+      }
       return [];
     }
   }
@@ -136,8 +140,13 @@ export class BinanceService {
         return response.data.data || [];
       }
       return [];
-    } catch (error) {
-      console.error('获取Alpha币种列表失败:', error);
+    } catch (error: any) {
+      // 如果是 451 地理位置限制错误，静默返回空数组，使用备用数据
+      if (error.response?.status === 451) {
+        console.log('币安 API 访问受限 (451)，将使用模拟数据');
+      } else {
+        console.error('获取Alpha币种列表失败:', error.message);
+      }
       return [];
     }
   }
@@ -147,6 +156,13 @@ export class BinanceService {
     try {
       // 获取Alpha币种列表
       const alphaTokens = await this.getAlphaTokenList();
+
+      // 如果没有获取到数据，使用模拟数据
+      if (!alphaTokens || alphaTokens.length === 0) {
+        console.log('Alpha API 返回空数据，使用模拟数据');
+        return this.getMockAlphaCoins();
+      }
+
       console.log(`获取到 ${alphaTokens.length} 个Alpha币种`);
 
       const alphaCoins: Partial<CoinData>[] = [];
