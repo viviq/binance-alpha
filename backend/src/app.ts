@@ -105,17 +105,33 @@ const wsServer = new WebSocketServer(server);
 // 初始化数据采集器
 const dataCollector = new DataCollector();
 
-// 设置定时任务
-// 每1分钟采集一次数据
-cron.schedule('*/1 * * * *', async () => {
-  logger.info('开始定时数据采集');
-  try {
-    await dataCollector.startCollection();
-    logger.info('定时数据采集完成');
-  } catch (error) {
-    logger.error('定时数据采集失败:', error);
-  }
-});
+// 设置定时任务（生产环境延迟启动，避免启动时过载）
+if (process.env.NODE_ENV === 'production') {
+  // 生产环境：启动 5 分钟后再开始定时任务
+  setTimeout(() => {
+    logger.info('启动定时数据采集任务');
+    cron.schedule('*/5 * * * *', async () => {
+      logger.info('开始定时数据采集');
+      try {
+        await dataCollector.startCollection();
+        logger.info('定时数据采集完成');
+      } catch (error) {
+        logger.error('定时数据采集失败:', error);
+      }
+    });
+  }, 300000); // 5 分钟后启动
+} else {
+  // 开发环境：正常启动
+  cron.schedule('*/1 * * * *', async () => {
+    logger.info('开始定时数据采集');
+    try {
+      await dataCollector.startCollection();
+      logger.info('定时数据采集完成');
+    } catch (error) {
+      logger.error('定时数据采集失败:', error);
+    }
+  });
+}
 
 // 初始化数据库连接
 async function initializeDatabase() {
@@ -144,8 +160,13 @@ async function initializeDatabase() {
   }
 }
 
-// 启动时执行一次数据采集
+// 启动时执行一次数据采集（生产环境延迟启动）
 async function initializeData() {
+  if (process.env.NODE_ENV === 'production') {
+    logger.info('生产环境：跳过启动时数据采集，将在 5 分钟后由定时任务执行');
+    return;
+  }
+
   try {
     logger.info('初始化数据采集');
     await dataCollector.startCollection();
