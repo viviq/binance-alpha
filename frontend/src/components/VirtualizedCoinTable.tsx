@@ -144,8 +144,8 @@ const VirtualizedRow = memo(({ index, style, data }: {
           </Typography>
         </Box>
 
-        {/* 市值 */}
-        <Box sx={{ minWidth: 120, textAlign: 'right' }}>
+        {/* 流通市值 */}
+        <Box sx={{ minWidth: 110, textAlign: 'right' }}>
           <Typography variant="body2" sx={{ fontSize: '13px' }}>
             {coin.market_cap && coin.market_cap > 0 ? (
               formatNumber(coin.market_cap)
@@ -153,6 +153,19 @@ const VirtualizedRow = memo(({ index, style, data }: {
               <span style={{ color: '#999' }}>-</span>
             )}
           </Typography>
+        </Box>
+
+        {/* 完全稀释市值(FDV) */}
+        <Box sx={{ minWidth: 110, textAlign: 'right' }}>
+          <Tooltip title="基于流通市值估算，假设总供应量约为流通量的2倍">
+            <Typography variant="body2" sx={{ fontSize: '13px', color: 'text.secondary' }}>
+              {coin.market_cap && coin.market_cap > 0 ? (
+                <>~{formatNumber(coin.market_cap * 2)}</>
+              ) : (
+                <span style={{ color: '#999' }}>-</span>
+              )}
+            </Typography>
+          </Tooltip>
         </Box>
 
         {/* Alpha上线时间 */}
@@ -406,15 +419,22 @@ const VirtualizedCoinTable: React.FC<VirtualizedCoinTableProps> = ({
             24h成交量
           </TableSortLabel>
         </Box>
-        <Box sx={{ minWidth: 120, textAlign: 'right' }}>
+        <Box sx={{ minWidth: 110, textAlign: 'right' }}>
           <TableSortLabel
             active={orderBy === 'market_cap'}
             direction={orderBy === 'market_cap' ? order : 'asc'}
             onClick={createSortHandler('market_cap')}
             sx={{ fontSize: '12px', fontWeight: 600 }}
           >
-            市值
+            流通市值
           </TableSortLabel>
+        </Box>
+        <Box sx={{ minWidth: 110, textAlign: 'right' }}>
+          <Tooltip title="完全稀释市值，基于估算">
+            <Typography variant="body2" fontWeight="600" sx={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.6)' }}>
+              FDV估算
+            </Typography>
+          </Tooltip>
         </Box>
         <Box sx={{ minWidth: 140, textAlign: 'center' }}>
           <TableSortLabel
