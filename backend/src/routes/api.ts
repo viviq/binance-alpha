@@ -260,6 +260,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
         announcementTitle: item.announcementTitle,
         announcementUrl: item.announcementUrl,
         expectedListingDate: item.expectedListingDate,
+        // 使用同一个日期对象，因为我们已经在announcementService中处理了时区
         expectedListingTime: item.expectedListingDate,
       }));
 

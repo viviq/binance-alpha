@@ -287,6 +287,11 @@ const FuturesPage: React.FC = () => {
                           ? new Date(future.expected_listing_date).toLocaleDateString('zh-CN')
                           : '待确认'}
                       </Typography>
+                      {future.expected_listing_time && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          具体时间请查看公告详情
+                        </Typography>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Link

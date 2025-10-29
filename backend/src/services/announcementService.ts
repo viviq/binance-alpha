@@ -107,14 +107,28 @@ export class AnnouncementService {
       return null;
     }
 
-    // 提取日期（YYYY-MM-DD 格式）
-    const dateMatch = title.match(/\((\d{4})-(\d{2})-(\d{2})\)/g);
+    // 提取日期和时间
+    // 格式1: (YYYY-MM-DD HH:MM) - 带时间
+    // 格式2: (YYYY-MM-DD) - 只有日期
     let expectedListingDate: Date | undefined;
 
-    if (dateMatch && dateMatch.length > 0) {
-      // 取最后一个日期（通常是上线日期）
-      const lastDate = dateMatch[dateMatch.length - 1].replace(/[()]/g, '');
-      expectedListingDate = new Date(lastDate);
+    // 先尝试匹配带时间的格式
+    const dateTimeMatch = title.match(/\((\d{4})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})\)/);
+    if (dateTimeMatch) {
+      const [, year, month, day, hour, minute] = dateTimeMatch;
+      // 币安使用东八区时间 (UTC+8)，转换为UTC时间存储
+      const chinaTime = new Date(`${year}-${month}-${day}T${hour}:${minute}:00+08:00`);
+      expectedListingDate = chinaTime;
+    } else {
+      // 尝试只匹配日期
+      const dateMatch = title.match(/\((\d{4})-(\d{2})-(\d{2})\)/g);
+      if (dateMatch && dateMatch.length > 0) {
+        // 取最后一个日期（通常是上线日期）
+        const lastDate = dateMatch[dateMatch.length - 1].replace(/[()]/g, '');
+        // 重要：将日期解析为东八区时间，而不是UTC时间
+        // 这样可以避免显示时出现8小时偏差
+        expectedListingDate = new Date(`${lastDate}T00:00:00+08:00`);
+      }
     }
 
     const announcementUrl = `${this.ANNOUNCEMENT_BASE}/${code}`;
