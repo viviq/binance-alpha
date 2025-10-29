@@ -1,0 +1,190 @@
+import { pool } from './config';
+import { logger } from '../utils/logger';
+
+/**
+ * 数据库迁移运行器
+ * 在应用启动时自动执行所有待执行的迁移
+ */
+
+interface Migration {
+  id: string;
+  name: string;
+  sql: string;
+}
+
+// 定义所有迁移
+const migrations: Migration[] = [
+  {
+    id: '001',
+    name: 'add_fdv_and_total_supply',
+    sql: `
+      -- 添加fdv和total_supply字段到price_history表
+      ALTER TABLE price_history
+      ADD COLUMN IF NOT EXISTS total_supply DECIMAL(20, 2),
+      ADD COLUMN IF NOT EXISTS fdv DECIMAL(20, 2);
+
+      -- 更新视图以包含新字段
+      CREATE OR REPLACE VIEW v_coins_latest AS
+      SELECT
+          c.id,
+          c.symbol,
+          c.name,
+          c.alpha_listing_time,
+          c.is_active,
+          c.alpha_id,
+          c.chain_id,
+          c.contract_address,
+          ph.price as current_price,
+          ph.volume_24h,
+          ph.market_cap,
+          ph.circulating_supply,
+          ph.total_supply,
+          ph.fdv,
+          ph.price_change_24h as price_change,
+          ph.timestamp as last_updated,
+          fd.is_listed as futures_listed,
+          fd.listing_time as futures_listing_time,
+          fd.futures_price,
+          fd.open_interest,
+          fd.open_interest_1h,
+          fd.oi_to_mcap_ratio,
+          fd.futures_volume_24h,
+          fd.spot_futures_spread
+      FROM coins c
+      LEFT JOIN LATERAL (
+          SELECT * FROM price_history
+          WHERE coin_id = c.id
+          ORDER BY timestamp DESC
+          LIMIT 1
+      ) ph ON true
+      LEFT JOIN futures_data fd ON fd.coin_id = c.id
+      WHERE c.is_active = true;
+
+      -- 添加索引优化查询性能
+      CREATE INDEX IF NOT EXISTS idx_price_history_fdv ON price_history(fdv) WHERE fdv IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_price_history_total_supply ON price_history(total_supply) WHERE total_supply IS NOT NULL;
+    `
+  }
+  // 未来的迁移可以在这里添加
+  // {
+  //   id: '002',
+  //   name: 'add_another_feature',
+  //   sql: `...`
+  // }
+];
+
+/**
+ * 创建迁移历史表（如果不存在）
+ */
+async function createMigrationTable(): Promise<void> {
+  const sql = `
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      id VARCHAR(50) PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+
+  await pool.query(sql);
+}
+
+/**
+ * 检查迁移是否已执行
+ */
+async function isMigrationExecuted(migrationId: string): Promise<boolean> {
+  try {
+    const result = await pool.query(
+      'SELECT id FROM schema_migrations WHERE id = $1',
+      [migrationId]
+    );
+    return result.rows.length > 0;
+  } catch (error) {
+    // 如果表不存在，说明还没有执行过任何迁移
+    return false;
+  }
+}
+
+/**
+ * 记录迁移已执行
+ */
+async function recordMigration(migration: Migration): Promise<void> {
+  await pool.query(
+    'INSERT INTO schema_migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
+    [migration.id, migration.name]
+  );
+}
+
+/**
+ * 执行单个迁移
+ */
+async function executeMigration(migration: Migration): Promise<void> {
+  const client = await pool.connect();
+
+  try {
+    logger.info(`开始执行迁移: ${migration.id} - ${migration.name}`);
+
+    await client.query('BEGIN');
+
+    // 执行迁移SQL
+    await client.query(migration.sql);
+
+    // 记录迁移
+    await client.query(
+      'INSERT INTO schema_migrations (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
+      [migration.id, migration.name]
+    );
+
+    await client.query('COMMIT');
+
+    logger.info(`迁移执行成功: ${migration.id} - ${migration.name}`);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    logger.error(`迁移执行失败: ${migration.id} - ${migration.name}`, error);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * 运行所有待执行的迁移
+ */
+export async function runMigrations(): Promise<void> {
+  try {
+    logger.info('开始检查数据库迁移...');
+
+    // 创建迁移历史表
+    await createMigrationTable();
+
+    // 执行所有待执行的迁移
+    for (const migration of migrations) {
+      const executed = await isMigrationExecuted(migration.id);
+
+      if (!executed) {
+        await executeMigration(migration);
+      } else {
+        logger.info(`迁移已执行，跳过: ${migration.id} - ${migration.name}`);
+      }
+    }
+
+    logger.info('数据库迁移检查完成');
+  } catch (error) {
+    logger.error('数据库迁移失败:', error);
+    // 不抛出错误，让应用继续启动
+    // throw error;
+  }
+}
+
+/**
+ * 获取已执行的迁移列表
+ */
+export async function getExecutedMigrations(): Promise<string[]> {
+  try {
+    const result = await pool.query(
+      'SELECT id FROM schema_migrations ORDER BY executed_at'
+    );
+    return result.rows.map(row => row.id);
+  } catch (error) {
+    return [];
+  }
+}

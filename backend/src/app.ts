@@ -7,6 +7,7 @@ import { RateLimiterMemory } from 'rate-limiter-flexible';
 import { logger } from './utils/logger';
 import { testDatabaseConnection, testRedisConnection, closeConnections } from './database/config';
 import { initializeDatabase as initDb } from './database/initDb';
+import { runMigrations } from './database/migrations';
 import apiRoutes from './routes/api';
 import { WebSocketServer } from './websocket/server';
 import { DataCollector } from './services/dataCollector';
@@ -151,6 +152,9 @@ async function initializeDatabase() {
 
   // 初始化数据库表结构
   await initDb();
+
+  // 运行数据库迁移
+  await runMigrations();
 }
 
 // 启动时执行一次数据采集（生产环境延迟启动）
