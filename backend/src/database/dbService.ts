@@ -78,7 +78,7 @@ export class DatabaseService {
         symbol, name, alpha_listing_time, is_active,
         alpha_id, chain_id, contract_address,
         current_price, volume_24h, market_cap,
-        circulating_supply, price_change,
+        circulating_supply, total_supply, fdv, price_change,
         last_updated,
         futures_listed as "futures_is_listed",
         futures_listing_time,
@@ -101,6 +101,8 @@ export class DatabaseService {
       current_price: row.current_price ? parseFloat(row.current_price) : null,
       market_cap: row.market_cap ? parseFloat(row.market_cap) : null,
       circulating_supply: row.circulating_supply ? parseFloat(row.circulating_supply) : 0,
+      total_supply: row.total_supply ? parseFloat(row.total_supply) : null,
+      fdv: row.fdv ? parseFloat(row.fdv) : null,
       volume_24h: row.volume_24h ? parseFloat(row.volume_24h) : null,
       price_change: row.price_change ? parseFloat(row.price_change) : null,
       futures_data: row.futures_is_listed ? {
