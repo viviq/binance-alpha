@@ -117,7 +117,16 @@ async function createMigrationTable(): Promise<void> {
     );
   `;
 
-  await pool.query(sql);
+  try {
+    await pool.query(sql);
+    logger.info('📊 schema_migrations 表已创建或已存在');
+  } catch (error: any) {
+    logger.error('❌ 创建 schema_migrations 表失败:', {
+      message: error.message,
+      code: error.code
+    });
+    throw error;
+  }
 }
 
 /**
@@ -154,11 +163,24 @@ async function executeMigration(migration: Migration): Promise<void> {
 
   try {
     logger.info(`开始执行迁移: ${migration.id} - ${migration.name}`);
+    logger.info(`迁移SQL预览: ${migration.sql.substring(0, 100)}...`);
 
     await client.query('BEGIN');
 
     // 执行迁移SQL
-    await client.query(migration.sql);
+    try {
+      await client.query(migration.sql);
+      logger.info(`迁移SQL执行成功: ${migration.id}`);
+    } catch (sqlError: any) {
+      logger.error(`迁移SQL执行失败: ${migration.id}`, {
+        error: sqlError.message,
+        code: sqlError.code,
+        detail: sqlError.detail,
+        hint: sqlError.hint,
+        position: sqlError.position
+      });
+      throw sqlError;
+    }
 
     // 记录迁移
     await client.query(
@@ -168,10 +190,13 @@ async function executeMigration(migration: Migration): Promise<void> {
 
     await client.query('COMMIT');
 
-    logger.info(`迁移执行成功: ${migration.id} - ${migration.name}`);
-  } catch (error) {
+    logger.info(`✅ 迁移执行成功: ${migration.id} - ${migration.name}`);
+  } catch (error: any) {
     await client.query('ROLLBACK');
-    logger.error(`迁移执行失败: ${migration.id} - ${migration.name}`, error);
+    logger.error(`❌ 迁移执行失败: ${migration.id} - ${migration.name}`, {
+      message: error.message,
+      stack: error.stack
+    });
     throw error;
   } finally {
     client.release();
@@ -183,25 +208,51 @@ async function executeMigration(migration: Migration): Promise<void> {
  */
 export async function runMigrations(): Promise<void> {
   try {
-    logger.info('开始检查数据库迁移...');
+    logger.info('🔄 开始检查数据库迁移...');
+    logger.info(`📋 共有 ${migrations.length} 个迁移待检查`);
 
     // 创建迁移历史表
-    await createMigrationTable();
+    try {
+      await createMigrationTable();
+      logger.info('✅ 迁移历史表已就绪');
+    } catch (error: any) {
+      logger.error('❌ 创建迁移历史表失败:', error.message);
+      throw error;
+    }
 
     // 执行所有待执行的迁移
-    for (const migration of migrations) {
-      const executed = await isMigrationExecuted(migration.id);
+    let executedCount = 0;
+    let skippedCount = 0;
 
-      if (!executed) {
-        await executeMigration(migration);
-      } else {
-        logger.info(`迁移已执行，跳过: ${migration.id} - ${migration.name}`);
+    for (const migration of migrations) {
+      try {
+        const executed = await isMigrationExecuted(migration.id);
+
+        if (!executed) {
+          logger.info(`🚀 准备执行迁移: ${migration.id} - ${migration.name}`);
+          await executeMigration(migration);
+          executedCount++;
+        } else {
+          logger.info(`⏭️  迁移已执行，跳过: ${migration.id} - ${migration.name}`);
+          skippedCount++;
+        }
+      } catch (error: any) {
+        logger.error(`❌ 迁移 ${migration.id} 执行失败:`, {
+          name: migration.name,
+          error: error.message,
+          stack: error.stack
+        });
+        // 继续执行后续迁移
+        continue;
       }
     }
 
-    logger.info('数据库迁移检查完成');
-  } catch (error) {
-    logger.error('数据库迁移失败:', error);
+    logger.info(`✅ 数据库迁移检查完成 - 执行: ${executedCount}, 跳过: ${skippedCount}`);
+  } catch (error: any) {
+    logger.error('❌ 数据库迁移系统失败:', {
+      message: error.message,
+      stack: error.stack
+    });
     // 不抛出错误，让应用继续启动
     // throw error;
   }
