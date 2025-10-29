@@ -64,10 +64,42 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_price_history_fdv ON price_history(fdv) WHERE fdv IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_price_history_total_supply ON price_history(total_supply) WHERE total_supply IS NOT NULL;
     `
+  },
+  {
+    id: '002',
+    name: 'create_upcoming_futures_table',
+    sql: `
+      -- 创建即将上线合约表
+      CREATE TABLE IF NOT EXISTS upcoming_futures (
+          id SERIAL PRIMARY KEY,
+          symbol VARCHAR(50) NOT NULL,
+          name VARCHAR(100),
+          announcement_id VARCHAR(100) UNIQUE,
+          announcement_title TEXT,
+          announcement_url TEXT,
+          expected_listing_date DATE,
+          expected_listing_time TIMESTAMP,
+          status VARCHAR(20) DEFAULT 'pending',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- 创建索引
+      CREATE INDEX IF NOT EXISTS idx_upcoming_futures_symbol ON upcoming_futures(symbol);
+      CREATE INDEX IF NOT EXISTS idx_upcoming_futures_status ON upcoming_futures(status);
+      CREATE INDEX IF NOT EXISTS idx_upcoming_futures_expected_time ON upcoming_futures(expected_listing_time);
+
+      -- 创建触发器
+      DROP TRIGGER IF EXISTS update_upcoming_futures_updated_at ON upcoming_futures;
+      CREATE TRIGGER update_upcoming_futures_updated_at
+          BEFORE UPDATE ON upcoming_futures
+          FOR EACH ROW
+          EXECUTE FUNCTION update_updated_at_column();
+    `
   }
   // 未来的迁移可以在这里添加
   // {
-  //   id: '002',
+  //   id: '003',
   //   name: 'add_another_feature',
   //   sql: `...`
   // }
