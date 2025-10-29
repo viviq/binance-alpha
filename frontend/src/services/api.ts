@@ -211,6 +211,22 @@ export class ApiService {
     }
   }
 
+  // 手动刷新即将上线的合约
+  static async refreshUpcomingFutures(): Promise<{ count: number; data: any[] }> {
+    try {
+      const response = await api.post<ApiResponse<{ count: number; data: any[] }>>('/upcoming-futures/refresh');
+
+      if (!response.data.success) {
+        throw new Error(response.data.error || '刷新即将上线合约失败');
+      }
+
+      return response.data.data!;
+    } catch (error) {
+      console.error('刷新即将上线合约失败:', error);
+      throw error;
+    }
+  }
+
   // 获取价格历史数据
   static async getPriceHistory(symbol: string, period: string = '24h'): Promise<any[]> {
     try {

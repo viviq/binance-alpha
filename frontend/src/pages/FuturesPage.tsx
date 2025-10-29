@@ -15,12 +15,15 @@ import {
   CircularProgress,
   Link,
   Tooltip,
+  Button,
+  Snackbar,
 } from '@mui/material';
 import {
   TrendingUp,
   TrendingDown,
   Schedule,
   OpenInNew,
+  Refresh,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -42,6 +45,16 @@ const FuturesPage: React.FC = () => {
   const { coins, loading, error } = useAppStore();
   const [futuresCoins, setFuturesCoins] = useState<CoinData[]>([]);
   const [upcomingFutures, setUpcomingFutures] = useState<UpcomingFuture[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity: 'success' | 'error' | 'info';
+  }>({
+    open: false,
+    message: '',
+    severity: 'info',
+  });
 
   // 筛选和排序有合约的币种
   useEffect(() => {
@@ -110,6 +123,32 @@ const FuturesPage: React.FC = () => {
     }
     return `$${num.toFixed(2)}`;
   }, []);
+
+  const handleRefreshUpcomingFutures = async () => {
+    setRefreshing(true);
+    try {
+      const result = await ApiService.refreshUpcomingFutures();
+      setUpcomingFutures(result.data);
+      setSnackbar({
+        open: true,
+        message: `成功刷新 ${result.count} 条合约公告`,
+        severity: 'success',
+      });
+    } catch (error: any) {
+      console.error('刷新失败:', error);
+      setSnackbar({
+        open: true,
+        message: error.message || '刷新失败，请稍后重试',
+        severity: 'error',
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleCloseSnackbar = () => {
+    setSnackbar({ ...snackbar, open: false });
+  };
 
   const getPriceChangeColor = (change: number) => {
     if (change > 0) return 'success.main';
@@ -191,10 +230,21 @@ const FuturesPage: React.FC = () => {
       {/* 即将上线的合约 */}
       {upcomingFutures.length > 0 && (
         <Box sx={{ mb: 3 }}>
-          <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Schedule />
-            即将上线的合约
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Schedule />
+              最近上线的合约
+            </Typography>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={refreshing ? <CircularProgress size={16} /> : <Refresh />}
+              onClick={handleRefreshUpcomingFutures}
+              disabled={refreshing}
+            >
+              {refreshing ? '刷新中...' : '手动刷新'}
+            </Button>
+          </Box>
           <TableContainer component={Paper}>
             <Table>
               <TableHead>
@@ -467,6 +517,18 @@ const FuturesPage: React.FC = () => {
           * FDV为完全稀释估值，计算公式：总供应量 × 当前价格
         </Typography>
       </Box>
+
+      {/* 提示信息 */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={handleCloseSnackbar}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Container>
   );
 };

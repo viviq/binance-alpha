@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { dbService } from '../database/dbService';
 import { messageQueue } from '../services/messageQueue';
 import { BinanceService } from '../services/binanceService';
+import { announcementService } from '../services/announcementService';
 import { CoinData, FilterOptions, PaginatedResponse, StatsData, ApiResponse } from '../types';
 
 const router = Router();
@@ -238,6 +239,63 @@ router.get('/upcoming-futures', async (req: Request, res: Response) => {
         timestamp: new Date().toISOString()
       });
     }
+  }
+});
+
+// 手动刷新即将上线的合约
+router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => {
+  try {
+    console.log('开始手动刷新即将上线的合约数据...');
+
+    // 从币安API获取最新公告
+    const upcomingFutures = await announcementService.getUpcomingFutures();
+
+    if (upcomingFutures.length > 0) {
+      // 保存到数据库
+      const dataList = upcomingFutures.map(item => ({
+        symbol: item.symbol,
+        name: item.name,
+        announcementId: item.announcementId,
+        announcementTitle: item.announcementTitle,
+        announcementUrl: item.announcementUrl,
+        expectedListingDate: item.expectedListingDate,
+        expectedListingTime: item.expectedListingDate,
+      }));
+
+      await dbService.batchUpsertUpcomingFutures(dataList);
+
+      console.log(`成功刷新 ${upcomingFutures.length} 个即将上线的合约`);
+
+      const response: ApiResponse<{ count: number; data: any[] }> = {
+        success: true,
+        data: {
+          count: upcomingFutures.length,
+          data: await dbService.getUpcomingFutures('pending')
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      res.json(response);
+    } else {
+      const response: ApiResponse<{ count: number; data: any[] }> = {
+        success: true,
+        data: {
+          count: 0,
+          data: []
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      res.json(response);
+    }
+  } catch (error: any) {
+    console.error('手动刷新即将上线合约失败:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '刷新失败，请稍后重试',
+      timestamp: new Date().toISOString()
+    });
   }
 });
 
