@@ -233,7 +233,7 @@ const FuturesPage: React.FC = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
             <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Schedule />
-              最近上线的合约
+              即将/最近上线的合约
             </Typography>
             <Button
               variant="outlined"

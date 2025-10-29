@@ -208,14 +208,15 @@ router.get('/coins/:symbol/history', async (req: Request, res: Response) => {
   }
 });
 
-// 获取即将上线的合约
+// 获取即将上线的合约（显示所有最近的，不按状态过滤）
 router.get('/upcoming-futures', async (req: Request, res: Response) => {
   try {
-    const upcomingFutures = await dbService.getUpcomingFutures('pending');
+    // 获取所有最近的合约公告（包括pending和listed状态）
+    const allFutures = await dbService.getUpcomingFutures();
 
     const response: ApiResponse<any[]> = {
       success: true,
-      data: upcomingFutures,
+      data: allFutures,
       timestamp: new Date().toISOString()
     };
 
@@ -270,7 +271,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
         success: true,
         data: {
           count: upcomingFutures.length,
-          data: await dbService.getUpcomingFutures('pending')
+          data: await dbService.getUpcomingFutures()
         },
         timestamp: new Date().toISOString()
       };

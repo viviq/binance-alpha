@@ -54,6 +54,7 @@ export class AnnouncementService {
    * 解析合约上线公告
    * 匹配格式：
    * - "XXX (SYMBOL) Will Be Available on ... Binance Futures (YYYY-MM-DD)"
+   * - "Binance Futures Will Launch USDⓈ-Margined SYMBOLUSDT Perpetual Contract"
    * - "Binance Futures Will Launch ... SYMBOL ..."
    */
   parseFuturesAnnouncement(announcement: BinanceAnnouncement): ParsedFuturesAnnouncement | null {
@@ -68,17 +69,43 @@ export class AnnouncementService {
       return null;
     }
 
-    // 提取币种符号（括号中的内容）
-    const symbolMatch = title.match(/\(([A-Z0-9]+)\)/);
-    if (!symbolMatch) {
-      return null;
+    let symbol: string | null = null;
+    let name: string | undefined = undefined;
+
+    // 尝试多种格式提取符号
+
+    // 格式1: "Binance Futures Will Launch USDⓈ-Margined SYMBOLUSDT Perpetual Contract"
+    const newFormatMatch = title.match(/USDⓈ-Margined\s+([A-Z0-9]+USDT)\s+Perpetual/i);
+    if (newFormatMatch) {
+      symbol = newFormatMatch[1];
+      // 去掉 USDT 后缀作为币种符号
+      const baseSymbol = symbol.replace(/USDT$/i, '');
+      symbol = baseSymbol; // 存储不带USDT的符号
     }
 
-    const symbol = symbolMatch[1];
+    // 格式2: 括号中的内容 "(SYMBOL)"
+    if (!symbol) {
+      const symbolMatch = title.match(/\(([A-Z0-9]+)\)/);
+      if (symbolMatch) {
+        symbol = symbolMatch[1];
+        // 提取币种名称（括号前的单词）
+        const nameMatch = title.match(/([A-Za-z0-9\s\u4e00-\u9fa5]+)\s*\([A-Z0-9]+\)/);
+        name = nameMatch ? nameMatch[1].trim() : undefined;
+      }
+    }
 
-    // 提取币种名称（括号前的单词）
-    const nameMatch = title.match(/([A-Za-z0-9\s\u4e00-\u9fa5]+)\s*\([A-Z0-9]+\)/);
-    const name = nameMatch ? nameMatch[1].trim() : undefined;
+    // 格式3: "SYMBOLUSDT" 出现在标题中
+    if (!symbol) {
+      const directMatch = title.match(/\b([A-Z0-9]{2,10})USDT\b/);
+      if (directMatch) {
+        symbol = directMatch[1];
+      }
+    }
+
+    // 如果没有匹配到符号，返回null
+    if (!symbol) {
+      return null;
+    }
 
     // 提取日期（YYYY-MM-DD 格式）
     const dateMatch = title.match(/\((\d{4})-(\d{2})-(\d{2})\)/g);

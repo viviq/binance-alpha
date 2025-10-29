@@ -409,20 +409,44 @@ export class DatabaseService {
   }
 
   // 获取即将上线的合约列表
-  async getUpcomingFutures(status: string = 'pending'): Promise<any[]> {
-    const query = `
-      SELECT *
-      FROM upcoming_futures
-      WHERE status = $1
-      ORDER BY
-        CASE
-          WHEN expected_listing_time IS NOT NULL THEN expected_listing_time
-          WHEN expected_listing_date IS NOT NULL THEN expected_listing_date
-          ELSE created_at
-        END DESC
-    `;
+  // 如果不传status，则返回所有最近30天的记录
+  async getUpcomingFutures(status?: string): Promise<any[]> {
+    let query: string;
+    let params: any[];
 
-    const result = await pool.query(query, [status]);
+    if (status) {
+      // 按状态筛选
+      query = `
+        SELECT *
+        FROM upcoming_futures
+        WHERE status = $1
+        ORDER BY
+          CASE
+            WHEN expected_listing_time IS NOT NULL THEN expected_listing_time
+            WHEN expected_listing_date IS NOT NULL THEN expected_listing_date
+            ELSE created_at
+          END DESC
+        LIMIT 50
+      `;
+      params = [status];
+    } else {
+      // 返回所有最近30天的记录
+      query = `
+        SELECT *
+        FROM upcoming_futures
+        WHERE created_at >= NOW() - INTERVAL '30 days'
+        ORDER BY
+          CASE
+            WHEN expected_listing_time IS NOT NULL THEN expected_listing_time
+            WHEN expected_listing_date IS NOT NULL THEN expected_listing_date
+            ELSE created_at
+          END DESC
+        LIMIT 50
+      `;
+      params = [];
+    }
+
+    const result = await pool.query(query, params);
     return result.rows;
   }
 
