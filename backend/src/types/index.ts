@@ -6,6 +6,8 @@ export interface CoinData {
   current_price: number | null;
   market_cap: number | null;
   circulating_supply: number;
+  total_supply?: number | null;
+  fdv?: number | null;
   volume_24h: number | null;
   price_change: number | null;
   futures_data?: FuturesData;

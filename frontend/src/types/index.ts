@@ -9,6 +9,8 @@ export interface CoinData {
   price_change: number;
   volume_24h: number;
   market_cap: number;
+  total_supply?: number;
+  fdv?: number;
   futures_data?: FuturesData;
   last_updated: string;
   // ALPHA币种相关字段

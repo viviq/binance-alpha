@@ -284,8 +284,8 @@ const FuturesPage: React.FC = () => {
               <TableCell align="right" width="100">24h涨跌</TableCell>
               <TableCell align="right" width="110">流通市值</TableCell>
               <TableCell align="right" width="110">
-                <Tooltip title="完全稀释市值，基于估算">
-                  <span>FDV估算</span>
+                <Tooltip title="完全稀释估值 (FDV)">
+                  <span>FDV</span>
                 </Tooltip>
               </TableCell>
               <TableCell align="right" width="120">未平仓量</TableCell>
@@ -386,10 +386,10 @@ const FuturesPage: React.FC = () => {
                   </TableCell>
 
                   <TableCell align="right">
-                    <Tooltip title="基于流通市值估算，假设总供应量约为流通量的2倍">
+                    <Tooltip title="完全稀释估值 (FDV) = 总供应量 × 当前价格">
                       <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-                        {coin.market_cap && coin.market_cap > 0 ? (
-                          <>~{formatLargeNumber(coin.market_cap * 2)}</>
+                        {coin.fdv && coin.fdv > 0 ? (
+                          formatLargeNumber(coin.fdv)
                         ) : (
                           '-'
                         )}
@@ -464,7 +464,7 @@ const FuturesPage: React.FC = () => {
         </Typography>
         <br />
         <Typography variant="caption" color="text.secondary">
-          * FDV为估算值，基于流通市值×2计算（假设总供应量约为流通量的2倍）
+          * FDV为完全稀释估值，计算公式：总供应量 × 当前价格
         </Typography>
       </Box>
     </Container>

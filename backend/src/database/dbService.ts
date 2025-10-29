@@ -128,9 +128,9 @@ export class DatabaseService {
     const query = `
       INSERT INTO price_history (
         coin_id, symbol, price, volume_24h, market_cap,
-        circulating_supply, price_change_24h, timestamp
+        circulating_supply, total_supply, fdv, price_change_24h, timestamp
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     `;
 
     const values = [
@@ -140,6 +140,8 @@ export class DatabaseService {
       coin.volume_24h,
       coin.market_cap,
       coin.circulating_supply,
+      coin.total_supply,
+      coin.fdv,
       coin.price_change,
       new Date()
     ];

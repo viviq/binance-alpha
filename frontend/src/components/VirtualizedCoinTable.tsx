@@ -157,10 +157,10 @@ const VirtualizedRow = memo(({ index, style, data }: {
 
         {/* 完全稀释市值(FDV) */}
         <Box sx={{ minWidth: 110, textAlign: 'right' }}>
-          <Tooltip title="基于流通市值估算，假设总供应量约为流通量的2倍">
+          <Tooltip title="完全稀释估值 (FDV) = 总供应量 × 当前价格">
             <Typography variant="body2" sx={{ fontSize: '13px', color: 'text.secondary' }}>
-              {coin.market_cap && coin.market_cap > 0 ? (
-                <>~{formatNumber(coin.market_cap * 2)}</>
+              {coin.fdv && coin.fdv > 0 ? (
+                formatNumber(coin.fdv)
               ) : (
                 <span style={{ color: '#999' }}>-</span>
               )}
@@ -430,9 +430,9 @@ const VirtualizedCoinTable: React.FC<VirtualizedCoinTableProps> = ({
           </TableSortLabel>
         </Box>
         <Box sx={{ minWidth: 110, textAlign: 'right' }}>
-          <Tooltip title="完全稀释市值，基于估算">
+          <Tooltip title="完全稀释估值 (FDV)">
             <Typography variant="body2" fontWeight="600" sx={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.6)' }}>
-              FDV估算
+              FDV
             </Typography>
           </Tooltip>
         </Box>

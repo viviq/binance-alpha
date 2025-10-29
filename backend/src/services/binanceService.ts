@@ -216,6 +216,8 @@ export class BinanceService {
           // 1. 优先使用Alpha API提供的真实数据
           const tokenMarketCap = parseFloat(token.marketCap || '0');
           const tokenCirculatingSupply = parseFloat(token.circulatingSupply || '0');
+          const tokenTotalSupply = parseFloat(token.totalSupply || '0');
+          const tokenFdv = parseFloat(token.fdv || '0');
 
           if (tokenMarketCap > 0) {
             marketCap = tokenMarketCap;
@@ -249,6 +251,8 @@ export class BinanceService {
             price_change: priceData ? parseFloat(priceData.priceChangePercent) : parseFloat(token.percentChange24h || '0'),
             market_cap: marketCap || undefined,
             circulating_supply: circulatingSupply || undefined,
+            total_supply: tokenTotalSupply > 0 ? tokenTotalSupply : undefined,
+            fdv: tokenFdv > 0 ? tokenFdv : undefined,
             alpha_listing_time: token.listingTime ? new Date(token.listingTime).toISOString() : new Date().toISOString(),
             last_updated: new Date().toISOString(),
             is_active: true,

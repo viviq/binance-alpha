@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS price_history (
     volume_24h DECIMAL(20, 2),
     market_cap DECIMAL(20, 2),
     circulating_supply DECIMAL(20, 2),
+    total_supply DECIMAL(20, 2),
+    fdv DECIMAL(20, 2),
     price_change_24h DECIMAL(10, 4),
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -131,6 +133,8 @@ SELECT
     ph.volume_24h,
     ph.market_cap,
     ph.circulating_supply,
+    ph.total_supply,
+    ph.fdv,
     ph.price_change_24h as price_change,
     ph.timestamp as last_updated,
     fd.is_listed as futures_listed,
