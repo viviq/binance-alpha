@@ -193,7 +193,7 @@ const FuturesPage: React.FC = () => {
         <Box sx={{ mb: 3 }}>
           <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Schedule />
-            即将上线的合约
+            最近上线的合约
           </Typography>
           <TableContainer component={Paper}>
             <Table>
