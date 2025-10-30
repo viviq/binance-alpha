@@ -193,6 +193,12 @@ export class DataCollector {
         circulatingSupply: circulatingSupply
       });
 
+      // 计算 FDV (Fully Diluted Valuation)
+      const totalSupply = alphaCoin.total_supply || null;
+      const fdv = totalSupply && validatedData.price
+        ? totalSupply * validatedData.price
+        : null;
+
       const coinData: CoinData = {
         symbol: alphaCoin.symbol || '',
         name: alphaCoin.name || alphaCoin.symbol || '',
@@ -202,6 +208,8 @@ export class DataCollector {
         volume_24h: validatedData.volume,
         market_cap: validatedData.marketCap,
         circulating_supply: validatedData.circulatingSupply,
+        total_supply: totalSupply,
+        fdv: fdv,
         futures_data: futuresData || undefined,
         last_updated: new Date().toISOString(),
         is_active: alphaCoin.is_active !== undefined ? alphaCoin.is_active : true,
