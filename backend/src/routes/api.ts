@@ -301,6 +301,29 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
   }
 });
 
+// 获取数据库统计信息
+router.get('/database/stats', async (req: Request, res: Response) => {
+  try {
+    const stats = await dbService.getDatabaseStats();
+
+    const response: ApiResponse<any> = {
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('获取数据库统计失败:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '获取统计失败',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 手动清理数据库旧数据
 router.post('/cleanup', async (req: Request, res: Response) => {
   try {
@@ -333,6 +356,39 @@ router.post('/cleanup', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message || '清理失败，请稍后重试',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 清理所有 collection_logs（日志表可以全部清空）
+router.post('/cleanup/logs', async (req: Request, res: Response) => {
+  try {
+    console.log('开始清理所有采集日志...');
+
+    const result = await dbService.cleanupOldCollectionLogs(0); // 清理所有
+
+    console.log(`采集日志清理完成，共删除 ${result} 条记录`);
+
+    const response: ApiResponse<{
+      deleted: number;
+      message: string;
+    }> = {
+      success: true,
+      data: {
+        deleted: result,
+        message: `成功清理 ${result} 条采集日志`
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('清理采集日志失败:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '清理失败',
       timestamp: new Date().toISOString()
     });
   }

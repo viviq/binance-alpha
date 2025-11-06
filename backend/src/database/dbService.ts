@@ -526,6 +526,64 @@ export class DatabaseService {
     const result = await pool.query(query);
     return result.rowCount || 0;
   }
+
+  // 清理非活跃的旧币对（谨慎使用，会级联删除相关数据）
+  async cleanupInactiveCoins(monthsToKeep: number = 6): Promise<number> {
+    const query = `
+      DELETE FROM coins
+      WHERE is_active = false
+      AND alpha_listing_time < NOW() - INTERVAL '${monthsToKeep} months'
+    `;
+
+    const result = await pool.query(query);
+    logger.info(`清理了 ${result.rowCount} 个非活跃币对（${monthsToKeep}个月前）`);
+    return result.rowCount || 0;
+  }
+
+  // 获取数据库空间占用统计
+  async getDatabaseStats(): Promise<{
+    tables: Array<{
+      table: string;
+      rows: number;
+      size: string;
+    }>;
+  }> {
+    const query = `
+      SELECT
+        schemaname as schema,
+        tablename as table,
+        pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) as size,
+        pg_total_relation_size(schemaname||'.'||tablename) as size_bytes
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
+    `;
+
+    const result = await pool.query(query);
+
+    // 获取每个表的行数
+    const tablesWithRows = await Promise.all(
+      result.rows.map(async (row) => {
+        const countQuery = `SELECT COUNT(*) as count FROM ${row.table}`;
+        try {
+          const countResult = await pool.query(countQuery);
+          return {
+            table: row.table,
+            rows: parseInt(countResult.rows[0].count),
+            size: row.size
+          };
+        } catch (error) {
+          return {
+            table: row.table,
+            rows: 0,
+            size: row.size
+          };
+        }
+      })
+    );
+
+    return { tables: tablesWithRows };
+  }
 }
 
 export const dbService = new DatabaseService();
