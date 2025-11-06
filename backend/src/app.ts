@@ -134,6 +134,18 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
+// 设置每日自动清理旧数据任务（每天凌晨3点执行）
+cron.schedule('0 3 * * *', async () => {
+  logger.info('开始执行每日数据清理任务');
+  try {
+    const { dbService } = await import('./database/dbService');
+    const result = await dbService.cleanupAllOldData();
+    logger.info('每日数据清理任务完成', result);
+  } catch (error) {
+    logger.error('每日数据清理任务失败:', error);
+  }
+});
+
 // 初始化数据库连接
 async function initializeDatabase() {
   logger.info('正在测试数据库连接...');

@@ -330,15 +330,69 @@ export class DatabaseService {
   }
 
   // 清理旧的价格历史数据
-  async cleanupOldPriceHistory(daysToKeep: number = 30): Promise<number> {
+  async cleanupOldPriceHistory(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM price_history
       WHERE timestamp < NOW() - INTERVAL '${daysToKeep} days'
     `;
 
     const result = await pool.query(query);
-    logger.info(`清理了 ${result.rowCount} 条旧的价格历史记录`);
+    logger.info(`清理了 ${result.rowCount} 条旧的价格历史记录（保留${daysToKeep}天）`);
     return result.rowCount || 0;
+  }
+
+  // 清理旧的通知记录
+  async cleanupOldNotifications(daysToKeep: number = 7): Promise<number> {
+    const query = `
+      DELETE FROM notifications
+      WHERE created_at < NOW() - INTERVAL '${daysToKeep} days'
+    `;
+
+    const result = await pool.query(query);
+    logger.info(`清理了 ${result.rowCount} 条旧的通知记录（保留${daysToKeep}天）`);
+    return result.rowCount || 0;
+  }
+
+  // 清理旧的采集日志
+  async cleanupOldCollectionLogs(daysToKeep: number = 7): Promise<number> {
+    const query = `
+      DELETE FROM collection_logs
+      WHERE started_at < NOW() - INTERVAL '${daysToKeep} days'
+    `;
+
+    const result = await pool.query(query);
+    logger.info(`清理了 ${result.rowCount} 条旧的采集日志（保留${daysToKeep}天）`);
+    return result.rowCount || 0;
+  }
+
+  // 统一清理所有旧数据
+  async cleanupAllOldData(): Promise<{
+    priceHistory: number;
+    notifications: number;
+    collectionLogs: number;
+    upcomingFutures: number;
+    total: number;
+  }> {
+    logger.info('开始清理所有旧数据...');
+    const startTime = Date.now();
+
+    const priceHistory = await this.cleanupOldPriceHistory(7);
+    const notifications = await this.cleanupOldNotifications(7);
+    const collectionLogs = await this.cleanupOldCollectionLogs(7);
+    const upcomingFutures = await this.cleanupOldUpcomingFutures(30);
+
+    const total = priceHistory + notifications + collectionLogs + upcomingFutures;
+    const duration = Date.now() - startTime;
+
+    logger.info(`数据清理完成！共删除 ${total} 条记录，耗时 ${duration}ms`);
+
+    return {
+      priceHistory,
+      notifications,
+      collectionLogs,
+      upcomingFutures,
+      total
+    };
   }
 
   // ========== 即将上线合约相关操作 ==========

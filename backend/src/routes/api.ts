@@ -301,6 +301,43 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
   }
 });
 
+// 手动清理数据库旧数据
+router.post('/cleanup', async (req: Request, res: Response) => {
+  try {
+    console.log('开始手动清理数据库旧数据...');
+
+    const result = await dbService.cleanupAllOldData();
+
+    console.log(`数据清理完成，共删除 ${result.total} 条记录`);
+
+    const response: ApiResponse<{
+      priceHistory: number;
+      notifications: number;
+      collectionLogs: number;
+      upcomingFutures: number;
+      total: number;
+      message: string;
+    }> = {
+      success: true,
+      data: {
+        ...result,
+        message: `成功清理 ${result.total} 条旧数据`
+      },
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('手动清理数据失败:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || '清理失败，请稍后重试',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // 健康检查
 router.get('/health', (req: Request, res: Response) => {
   res.json({
