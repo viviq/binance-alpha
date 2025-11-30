@@ -10,11 +10,9 @@ backend/dist/
 # 环境变量
 .env
 .env.local
-.env.production
 .env.development
 frontend/.env
 frontend/.env.local
-frontend/.env.production
 backend/.env
 backend/.env.local
 backend/.env.production
