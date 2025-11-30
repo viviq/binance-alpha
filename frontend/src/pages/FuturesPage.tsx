@@ -150,7 +150,8 @@ const FuturesPage: React.FC = () => {
     setSnackbar({ ...snackbar, open: false });
   };
 
-  const getPriceChangeColor = (change: number) => {
+  const getPriceChangeColor = (change: number | null | undefined) => {
+    if (change === null || change === undefined) return 'text.secondary';
     if (change > 0) return 'success.main';
     if (change < 0) return 'error.main';
     return 'text.secondary';
@@ -418,20 +419,26 @@ const FuturesPage: React.FC = () => {
                   </TableCell>
 
                   <TableCell align="right">
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                      {coin.price_change > 0 ? (
-                        <TrendingUp fontSize="small" sx={{ color: 'success.main' }} />
-                      ) : (
-                        <TrendingDown fontSize="small" sx={{ color: 'error.main' }} />
-                      )}
-                      <Typography
-                        variant="body2"
-                        fontWeight="medium"
-                        sx={{ color: getPriceChangeColor(coin.price_change) }}
-                      >
-                        {coin.price_change > 0 ? '+' : ''}{coin.price_change.toFixed(2)}%
+                    {coin.price_change !== null && coin.price_change !== undefined ? (
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                        {coin.price_change > 0 ? (
+                          <TrendingUp fontSize="small" sx={{ color: 'success.main' }} />
+                        ) : (
+                          <TrendingDown fontSize="small" sx={{ color: 'error.main' }} />
+                        )}
+                        <Typography
+                          variant="body2"
+                          fontWeight="medium"
+                          sx={{ color: getPriceChangeColor(coin.price_change) }}
+                        >
+                          {coin.price_change > 0 ? '+' : ''}{coin.price_change.toFixed(2)}%
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary">
+                        -
                       </Typography>
-                    </Box>
+                    )}
                   </TableCell>
 
                   <TableCell align="right">
