@@ -73,7 +73,8 @@ const FuturesPage: React.FC = () => {
     const fetchUpcomingFutures = async () => {
       try {
         const data = await ApiService.getUpcomingFutures();
-        setUpcomingFutures(data);
+        // 只显示最近3条
+        setUpcomingFutures(data.slice(0, 3));
       } catch (error) {
         console.error('获取即将上线合约失败:', error);
       }
@@ -128,7 +129,8 @@ const FuturesPage: React.FC = () => {
     setRefreshing(true);
     try {
       const result = await ApiService.refreshUpcomingFutures();
-      setUpcomingFutures(result.data);
+      // 只显示最近3条
+      setUpcomingFutures(result.data.slice(0, 3));
       setSnackbar({
         open: true,
         message: `成功刷新 ${result.count} 条合约公告`,
