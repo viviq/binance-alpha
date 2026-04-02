@@ -57,9 +57,30 @@ const FuturesPage: React.FC = () => {
   });
 
   // 筛选和排序有合约的币种
+  // 重要：只显示上过Alpha并且上了合约的币种
   useEffect(() => {
     const filtered = coins
-      .filter(coin => coin.futures_data?.is_listed && coin.futures_data?.listing_time)
+      .filter(coin => {
+        // 必须条件1：有合约数据且已上线
+        const hasFutures = coin.futures_data?.is_listed && coin.futures_data?.listing_time;
+        if (!hasFutures) return false;
+
+        // 必须条件2：上过Alpha（有alpha_id或alpha_listing_time）
+        const isAlphaCoin = coin.alpha_id || coin.alpha_listing_time;
+        if (!isAlphaCoin) {
+          console.warn(`跳过非Alpha币种: ${coin.symbol}`);
+          return false;
+        }
+
+        // 必须条件3：有有效的价格数据（避免显示空数据）
+        const hasValidData = coin.current_price && coin.current_price > 0;
+        if (!hasValidData) {
+          console.warn(`跳过无效数据的币种: ${coin.symbol}`);
+          return false;
+        }
+
+        return true;
+      })
       .sort((a, b) => {
         const timeA = a.futures_data?.listing_time || '';
         const timeB = b.futures_data?.listing_time || '';

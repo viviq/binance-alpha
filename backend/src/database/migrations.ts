@@ -140,8 +140,15 @@ const migrations: Migration[] = [
       WHERE c.is_active = true
         AND c.alpha_id IS NOT NULL;
 
-      -- 清理非Alpha币种（没有alpha_id的币种）
-      -- 这将级联删除相关的价格历史和合约数据
+      -- 先删除非Alpha币种的合约数据
+      DELETE FROM futures_data
+      WHERE coin_id IN (
+        SELECT id FROM coins
+        WHERE alpha_id IS NULL OR alpha_id = ''
+      );
+
+      -- 然后清理非Alpha币种（没有alpha_id的币种）
+      -- 这将级联删除相关的价格历史数据
       DELETE FROM coins WHERE alpha_id IS NULL OR alpha_id = '';
     `
   }
