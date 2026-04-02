@@ -58,7 +58,8 @@ const migrations: Migration[] = [
           LIMIT 1
       ) ph ON true
       LEFT JOIN futures_data fd ON fd.coin_id = c.id
-      WHERE c.is_active = true;
+      WHERE c.is_active = true
+        AND c.alpha_id IS NOT NULL;
 
       -- 添加索引优化查询性能
       CREATE INDEX IF NOT EXISTS idx_price_history_fdv ON price_history(fdv) WHERE fdv IS NOT NULL;
@@ -95,6 +96,53 @@ const migrations: Migration[] = [
           BEFORE UPDATE ON upcoming_futures
           FOR EACH ROW
           EXECUTE FUNCTION update_updated_at_column();
+    `
+  },
+  {
+    id: '003',
+    name: 'fix_view_to_filter_alpha_coins_only',
+    sql: `
+      -- 修复视图：只显示真正的Alpha币种（有alpha_id的币种）
+      CREATE OR REPLACE VIEW v_coins_latest AS
+      SELECT
+          c.id,
+          c.symbol,
+          c.name,
+          c.alpha_listing_time,
+          c.is_active,
+          c.alpha_id,
+          c.chain_id,
+          c.contract_address,
+          ph.price as current_price,
+          ph.volume_24h,
+          ph.market_cap,
+          ph.circulating_supply,
+          ph.total_supply,
+          ph.fdv,
+          ph.price_change_24h as price_change,
+          ph.timestamp as last_updated,
+          fd.is_listed as futures_listed,
+          fd.listing_time as futures_listing_time,
+          fd.futures_price,
+          fd.open_interest,
+          fd.open_interest_1h,
+          fd.oi_to_mcap_ratio,
+          fd.futures_volume_24h,
+          fd.spot_futures_spread
+      FROM coins c
+      LEFT JOIN LATERAL (
+          SELECT * FROM price_history
+          WHERE coin_id = c.id
+          ORDER BY timestamp DESC
+          LIMIT 1
+      ) ph ON true
+      LEFT JOIN futures_data fd ON fd.coin_id = c.id
+      WHERE c.is_active = true
+        AND c.alpha_id IS NOT NULL;
+
+      -- 清理非Alpha币种（没有alpha_id的币种）
+      -- 这将级联删除相关的价格历史和合约数据
+      DELETE FROM coins WHERE alpha_id IS NULL OR alpha_id = '';
     `
   }
   // 未来的迁移可以在这里添加

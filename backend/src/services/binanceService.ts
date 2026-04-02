@@ -280,59 +280,11 @@ export class BinanceService {
   }
 
   // 模拟Alpha币种数据（备用方案）
+  // 注意：不再返回非Alpha币种，而是返回空数组，避免污染数据库
   private async getMockAlphaCoins(): Promise<Partial<CoinData>[]> {
-    try {
-      const symbols = await this.getAllSymbols();
-      const recentSymbols = symbols.slice(0, 50); // 增加到50个作为示例
-
-      const alphaCoins: Partial<CoinData>[] = [];
-
-      for (const symbol of recentSymbols) {
-        try {
-          const ticker = await this.get24hrTicker(symbol);
-          if (ticker.length > 0) {
-            const price = parseFloat(ticker[0].lastPrice);
-            const volume = parseFloat(ticker[0].volume);
-            const priceChange = parseFloat(ticker[0].priceChangePercent);
-            
-              // 只添加有效数据的币种
-              if (price > 0 && volume > 0) {
-                // 计算合理的市值和流通量
-                const circulatingSupply = this.generateRealisticSupply(price);
-                const marketCap = price * circulatingSupply;
-                
-                const coinData: Partial<CoinData> = {
-                  symbol: symbol.replace('USDT', ''),
-                  name: symbol.replace('USDT', ''),
-                  current_price: price,
-                  volume_24h: volume,
-                  price_change: priceChange,
-                  market_cap: marketCap,
-                  circulating_supply: circulatingSupply,
-                  alpha_listing_time: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(), // 最近7天内的随机时间
-                  last_updated: new Date().toISOString(),
-                  is_active: true,
-                  alpha_id: `ALPHA_${Math.floor(Math.random() * 1000) + 400}`,
-                  chain_id: Math.random() > 0.5 ? "56" : "CT_501", // BSC 或 Solana
-                  contract_address: this.generateMockContractAddress()
-                };
-                alphaCoins.push(coinData);
-              }
-          }
-        } catch (error) {
-          if (process.env.NODE_ENV !== 'production') {
-            console.error(`处理币对 ${symbol} 数据失败:`, error);
-          }
-        }
-      }
-
-      return alphaCoins;
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('获取模拟Alpha币对失败:', error);
-      }
-      return this.generateFallbackMockData();
-    }
+    console.warn('⚠️  无法从币安Alpha API获取数据，返回空数组');
+    console.warn('⚠️  如需测试，请确保能访问币安Alpha API');
+    return [];
   }
 
 
