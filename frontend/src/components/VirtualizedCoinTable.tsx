@@ -430,10 +430,15 @@ const VirtualizedCoinTable: React.FC<VirtualizedCoinTableProps> = ({
           </TableSortLabel>
         </Box>
         <Box sx={{ minWidth: 110, textAlign: 'right' }}>
-          <Tooltip title="完全稀释估值 (FDV)">
-            <Typography variant="body2" fontWeight="600" sx={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.6)' }}>
+          <Tooltip title="完全稀释估值 (FDV) = 总供应量 × 当前价格">
+            <TableSortLabel
+              active={orderBy === 'fdv'}
+              direction={orderBy === 'fdv' ? order : 'asc'}
+              onClick={createSortHandler('fdv')}
+              sx={{ fontSize: '12px', fontWeight: 600 }}
+            >
               FDV
-            </Typography>
+            </TableSortLabel>
           </Tooltip>
         </Box>
         <Box sx={{ minWidth: 140, textAlign: 'center' }}>

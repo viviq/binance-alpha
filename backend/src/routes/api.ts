@@ -58,32 +58,45 @@ router.get('/coins', async (req: Request, res: Response) => {
 
     // 排序
     coins.sort((a, b) => {
-      let aValue: any = a[sort_by as keyof CoinData];
-      let bValue: any = b[sort_by as keyof CoinData];
+      let aValue: any;
+      let bValue: any;
 
+      // 根据排序字段获取值
       if (sort_by === 'price_change_24h') {
-        aValue = a.price_change || 0;
-        bValue = b.price_change || 0;
+        aValue = a.price_change;
+        bValue = b.price_change;
       } else if (sort_by === 'futures_listing_time') {
         // 合约上线时间排序
-        aValue = a.futures_data?.listing_time || '';
-        bValue = b.futures_data?.listing_time || '';
-
-        // 未上线的放最后
-        if (!aValue && bValue) return 1;
-        if (aValue && !bValue) return -1;
-        if (!aValue && !bValue) return 0;
+        aValue = a.futures_data?.listing_time || null;
+        bValue = b.futures_data?.listing_time || null;
+      } else if (sort_by === 'fdv') {
+        // FDV 排序
+        aValue = a.fdv;
+        bValue = b.fdv;
+      } else {
+        aValue = a[sort_by as keyof CoinData];
+        bValue = b[sort_by as keyof CoinData];
       }
 
-      if (typeof aValue === 'string') {
+      // 处理 null/undefined 值：将它们放在最后
+      const aIsNull = aValue === null || aValue === undefined;
+      const bIsNull = bValue === null || bValue === undefined;
+
+      if (aIsNull && bIsNull) return 0;
+      if (aIsNull) return sort_order === 'asc' ? 1 : 1; // null 值总是放最后
+      if (bIsNull) return sort_order === 'asc' ? -1 : -1;
+
+      // 字符串比较（转小写）
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
         aValue = aValue.toLowerCase();
         bValue = bValue.toLowerCase();
       }
 
+      // 执行排序
       if (sort_order === 'asc') {
-        return aValue > bValue ? 1 : -1;
+        return aValue > bValue ? 1 : aValue < bValue ? -1 : 0;
       } else {
-        return aValue < bValue ? 1 : -1;
+        return aValue < bValue ? 1 : aValue > bValue ? -1 : 0;
       }
     });
 

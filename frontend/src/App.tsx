@@ -164,7 +164,18 @@ const App: React.FC = () => {
         ApiService.getCoins({}),
         ApiService.getStats(),
       ]);
-      setCoins(coinsData.items || coinsData);
+
+      // 过滤掉无效数据：必须有价格且价格大于0
+      const validCoins = (coinsData.items || coinsData).filter((coin: any) => {
+        const hasValidPrice = coin.current_price && coin.current_price > 0;
+        if (!hasValidPrice) {
+          console.warn(`过滤无效数据: ${coin.symbol} - 无价格数据`);
+          return false;
+        }
+        return true;
+      });
+
+      setCoins(validCoins);
       setStats(statsData);
     } catch (error) {
       console.error('加载数据失败:', error);
@@ -194,13 +205,17 @@ const App: React.FC = () => {
     });
 
     wsService.on('initialData', (coinsData) => {
-      setCoins(coinsData);
-      console.log('收到初始数据:', coinsData.length, '个币对');
+      // 过滤无效数据
+      const validCoins = coinsData.filter((coin: any) => coin.current_price && coin.current_price > 0);
+      setCoins(validCoins);
+      console.log('收到初始数据:', validCoins.length, '个有效币对 (过滤前:', coinsData.length, ')');
     });
 
     wsService.on('dataUpdate', (coinsData) => {
-      setCoins(coinsData);
-      console.log('数据更新:', coinsData.length, '个币对');
+      // 过滤无效数据
+      const validCoins = coinsData.filter((coin: any) => coin.current_price && coin.current_price > 0);
+      setCoins(validCoins);
+      console.log('数据更新:', validCoins.length, '个有效币对 (过滤前:', coinsData.length, ')');
     });
 
     wsService.on('newCoin', (coinData) => {

@@ -89,7 +89,7 @@ const FilterPanel: React.FC<FilterPanelProps> = memo(({
         />
 
         {/* 排序 */}
-        <FormControl size="small" sx={{ minWidth: 110 }}>
+        <FormControl size="small" sx={{ minWidth: 130 }}>
           <InputLabel sx={{ fontSize: '13px' }}>排序</InputLabel>
           <Select
             value={filters.sort_by || 'alpha_listing_time'}
@@ -97,11 +97,13 @@ const FilterPanel: React.FC<FilterPanelProps> = memo(({
             onChange={(e) => handleSortChange('sort_by', e.target.value)}
             sx={{ backgroundColor: '#ffffff', height: 32, fontSize: '13px' }}
           >
-            <MenuItem value="alpha_listing_time" sx={{ fontSize: '13px' }}>上线时间</MenuItem>
+            <MenuItem value="alpha_listing_time" sx={{ fontSize: '13px' }}>Alpha上线时间</MenuItem>
             <MenuItem value="current_price" sx={{ fontSize: '13px' }}>价格</MenuItem>
-            <MenuItem value="market_cap" sx={{ fontSize: '13px' }}>市值</MenuItem>
+            <MenuItem value="market_cap" sx={{ fontSize: '13px' }}>流通市值</MenuItem>
+            <MenuItem value="fdv" sx={{ fontSize: '13px' }}>FDV</MenuItem>
             <MenuItem value="volume_24h" sx={{ fontSize: '13px' }}>成交量</MenuItem>
-            <MenuItem value="price_change_24h" sx={{ fontSize: '13px' }}>涨跌幅</MenuItem>
+            <MenuItem value="price_change_24h" sx={{ fontSize: '13px' }}>24h涨跌幅</MenuItem>
+            <MenuItem value="futures_listing_time" sx={{ fontSize: '13px' }}>合约上线时间</MenuItem>
           </Select>
         </FormControl>
 
