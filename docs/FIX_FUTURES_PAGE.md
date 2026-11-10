@@ -115,7 +115,7 @@ npm start
 export DATABASE_URL="postgresql://..."
 
 # 运行验证脚本
-node verify-and-fix-futures.js
+node scripts/verify-and-fix-futures.js
 ```
 
 脚本会：
@@ -241,7 +241,7 @@ CHECK (alpha_id IS NOT NULL AND alpha_id != '');
 
 ```bash
 # 添加到 crontab
-0 0 * * * cd /path/to/project && node verify-and-fix-futures.js
+0 0 * * * cd /path/to/project && node scripts/verify-and-fix-futures.js
 ```
 
 ## 故障排查
@@ -268,7 +268,7 @@ cd backend
 npm run migrate
 
 # 或使用验证脚本
-node verify-and-fix-futures.js "$DATABASE_URL"
+node scripts/verify-and-fix-futures.js "$DATABASE_URL"
 ```
 
 ### 问题3: 视图数据与实际数据不一致

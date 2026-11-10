@@ -151,6 +151,27 @@ const migrations: Migration[] = [
       -- 这将级联删除相关的价格历史数据
       DELETE FROM coins WHERE alpha_id IS NULL OR alpha_id = '';
     `
+  },
+  {
+    id: '004',
+    name: 'prune_redundant_indexes',
+    sql: `
+      -- coins.symbol 已有 UNIQUE 约束自带的索引
+      DROP INDEX IF EXISTS idx_coins_symbol;
+
+      -- 已被 idx_price_history_latest (coin_id, timestamp DESC) 覆盖
+      DROP INDEX IF EXISTS idx_price_history_coin_id;
+      DROP INDEX IF EXISTS idx_price_history_coin_timestamp;
+
+      -- 没有任何查询按 fdv / total_supply 过滤
+      DROP INDEX IF EXISTS idx_price_history_fdv;
+      DROP INDEX IF EXISTS idx_price_history_total_supply;
+
+      -- 历史查询按 symbol + 时间范围过滤，用复合索引替换单列索引
+      CREATE INDEX IF NOT EXISTS idx_price_history_symbol_timestamp
+        ON price_history (symbol, timestamp);
+      DROP INDEX IF EXISTS idx_price_history_symbol;
+    `
   }
   // 未来的迁移可以在这里添加
   // {

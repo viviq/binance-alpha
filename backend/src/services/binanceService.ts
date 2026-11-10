@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import { logger } from '../utils/logger';
 import { CoinData, FuturesData } from '../types';
 
 export class BinanceService {
@@ -31,7 +32,7 @@ export class BinanceService {
     // 请求拦截器（生产环境禁用详细日志）
     const requestInterceptor = (config: any) => {
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`API请求: ${config.method?.toUpperCase()} ${config.url}`);
+        logger.debug(`API请求: ${config.method?.toUpperCase()} ${config.url}`);
       }
       return config;
     };
@@ -41,7 +42,7 @@ export class BinanceService {
     const errorInterceptor = (error: any) => {
       // 只记录非 451 错误
       if (error.response?.status !== 451 && process.env.NODE_ENV !== 'production') {
-        console.error('API请求失败:', error.message);
+        logger.error('API请求失败:', error.message);
       }
       return Promise.reject(error);
     };
@@ -51,86 +52,6 @@ export class BinanceService {
 
     this.futuresApi.interceptors.request.use(requestInterceptor);
     this.futuresApi.interceptors.response.use(responseInterceptor, errorInterceptor);
-  }
-
-  // 获取所有交易对
-  async getAllSymbols(): Promise<string[]> {
-    try {
-      const response = await this.spotApi.get('/exchangeInfo');
-      const symbols = response.data.symbols
-        .filter((s: any) => s.status === 'TRADING' && s.quoteAsset === 'USDT')
-        .map((s: any) => s.symbol);
-
-      return symbols;
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('获取交易对失败:', error);
-      }
-      return [];
-    }
-  }
-
-  // 获取24小时价格统计
-  async get24hrTicker(symbol?: string): Promise<any[]> {
-    try {
-      const params = symbol ? { symbol } : {};
-      const response = await this.spotApi.get('/ticker/24hr', { params });
-      return Array.isArray(response.data) ? response.data : [response.data];
-    } catch (error: any) {
-      // 生产环境静默错误，避免日志爆炸
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('获取价格统计失败:', error.message);
-      }
-      return [];
-    }
-  }
-
-  // 获取当前价格
-  async getCurrentPrice(symbol: string): Promise<number | null> {
-    try {
-      const response = await this.spotApi.get('/ticker/price', {
-        params: { symbol }
-      });
-      const price = parseFloat(response.data.price);
-      return isNaN(price) ? null : price;
-    } catch (error) {
-      // 生产环境静默错误
-      if (process.env.NODE_ENV !== 'production') {
-        console.error(`获取${symbol}价格失败:`, error);
-      }
-      return null;
-    }
-  }
-
-  // 获取合约信息
-  async getFuturesInfo(): Promise<any[]> {
-    try {
-      const response = await this.futuresApi.get('/exchangeInfo');
-      return response.data.symbols.filter((s: any) =>
-        s.status === 'TRADING' && s.quoteAsset === 'USDT'
-      );
-    } catch (error: any) {
-      if (error.response?.status === 451) {
-        console.log('合约 API 访问受限 (451)');
-      } else {
-        console.error('获取合约信息失败:', error.message);
-      }
-      return [];
-    }
-  }
-
-  // 获取合约24小时统计
-  async getFutures24hrTicker(symbol?: string): Promise<any[]> {
-    try {
-      const params = symbol ? { symbol } : {};
-      const response = await this.futuresApi.get('/ticker/24hr', { params });
-      return Array.isArray(response.data) ? response.data : [response.data];
-    } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.error('获取合约统计失败:', error);
-      }
-      return [];
-    }
   }
 
   // 获取未平仓合约
@@ -143,7 +64,7 @@ export class BinanceService {
       return isNaN(openInterest) ? null : openInterest;
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') {
-        console.error(`获取${symbol}未平仓量失败:`, error);
+        logger.error(`获取${symbol}未平仓量失败:`, error);
       }
       return null;
     }
@@ -160,9 +81,9 @@ export class BinanceService {
     } catch (error: any) {
       // 如果是 451 地理位置限制错误，静默返回空数组，使用备用数据
       if (error.response?.status === 451) {
-        console.log('币安 API 访问受限 (451)，将使用模拟数据');
+        logger.info('币安 Alpha API 访问受限 (451)');
       } else {
-        console.error('获取Alpha币种列表失败:', error.message);
+        logger.error('获取Alpha币种列表失败:', error.message);
       }
       return [];
     }
@@ -176,12 +97,12 @@ export class BinanceService {
       const alphaTokens = await this.getAlphaTokenList();
 
       if (!alphaTokens || alphaTokens.length === 0) {
-        console.warn('⚠️  无法从币安Alpha API获取数据，返回空数组');
+        logger.warn('无法从币安Alpha API获取数据，返回空数组');
         return [];
       }
 
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`获取到 ${alphaTokens.length} 个Alpha币种`);
+        logger.info(`获取到 ${alphaTokens.length} 个Alpha币种`);
       }
 
       const alphaCoins: Partial<CoinData>[] = [];
@@ -221,7 +142,7 @@ export class BinanceService {
           });
         } catch (error) {
           if (process.env.NODE_ENV !== 'production') {
-            console.error(`处理Alpha币种 ${token.symbol} 数据失败:`, error);
+            logger.error(`处理Alpha币种 ${token.symbol} 数据失败:`, error);
           }
         }
       }
@@ -229,7 +150,7 @@ export class BinanceService {
       return alphaCoins;
     } catch (error) {
       if (process.env.NODE_ENV !== 'production') {
-        console.error('获取Alpha币对失败:', error);
+        logger.error('获取Alpha币对失败:', error);
       }
       return [];
     }
@@ -280,9 +201,9 @@ export class BinanceService {
     if (result.status !== 'rejected') return;
     const status = result.reason?.response?.status;
     if (status === 451) {
-      console.log(`${label} 访问受限 (451)`);
+      logger.info(`${label} 访问受限 (451)`);
     } else {
-      console.error(`获取${label}失败:`, result.reason?.message || result.reason);
+      logger.error(`获取${label}失败:`, result.reason?.message || result.reason);
     }
   }
 

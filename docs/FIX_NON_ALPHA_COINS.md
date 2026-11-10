@@ -47,13 +47,13 @@ npm start
 ```bash
 # 本地数据库
 export DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
-node clean-non-alpha-coins.js
+node scripts/clean-non-alpha-coins.js
 
 # 或者直接传递数据库URL
-node clean-non-alpha-coins.js "postgresql://user:password@localhost:5432/dbname"
+node scripts/clean-non-alpha-coins.js "postgresql://user:password@localhost:5432/dbname"
 
 # Railway生产数据库
-node clean-non-alpha-coins.js "postgresql://..."
+node scripts/clean-non-alpha-coins.js "postgresql://..."
 ```
 
 ### 3. 验证修复
@@ -136,7 +136,7 @@ WHERE is_active = true
 
 4. **重新运行清理脚本**
    ```bash
-   node clean-non-alpha-coins.js "$DATABASE_URL"
+   node scripts/clean-non-alpha-coins.js "$DATABASE_URL"
    ```
 
 ## 相关文件

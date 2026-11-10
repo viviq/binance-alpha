@@ -1,5 +1,6 @@
 import { PoolClient } from 'pg';
 import { pool } from './config';
+import { mapCoinRow } from './mappers';
 import { CoinData, FuturesData } from '../types';
 import { logger } from '../utils/logger';
 
@@ -12,12 +13,6 @@ export interface NotificationInput {
   coinSymbol?: string;
 }
 
-// DECIMAL 字段由 pg 返回字符串；只有 null/undefined 视为缺失，0 保留为 0
-function toNumberOrNull(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-  const n = parseFloat(String(value));
-  return Number.isFinite(n) ? n : null;
-}
 
 export class DatabaseService {
   // ========== 币对相关操作 ==========
@@ -235,33 +230,7 @@ export class DatabaseService {
 
     const result = await pool.query(query);
 
-    return result.rows.map(row => ({
-      symbol: row.symbol,
-      name: row.name,
-      alpha_listing_time: row.alpha_listing_time,
-      current_price: toNumberOrNull(row.current_price),
-      market_cap: toNumberOrNull(row.market_cap),
-      circulating_supply: toNumberOrNull(row.circulating_supply),
-      total_supply: toNumberOrNull(row.total_supply),
-      fdv: toNumberOrNull(row.fdv),
-      volume_24h: toNumberOrNull(row.volume_24h),
-      price_change: toNumberOrNull(row.price_change),
-      futures_data: row.futures_is_listed ? {
-        is_listed: row.futures_is_listed,
-        listing_time: row.futures_listing_time,
-        futures_price: toNumberOrNull(row.futures_price),
-        open_interest: toNumberOrNull(row.open_interest),
-        open_interest_1h: toNumberOrNull(row.open_interest_1h),
-        oi_to_mcap_ratio: toNumberOrNull(row.oi_to_mcap_ratio),
-        futures_volume_24h: toNumberOrNull(row.futures_volume_24h),
-        spot_futures_spread: toNumberOrNull(row.spot_futures_spread),
-      } : undefined,
-      last_updated: row.last_updated || new Date().toISOString(),
-      is_active: row.is_active,
-      alpha_id: row.alpha_id,
-      chain_id: row.chain_id,
-      contract_address: row.contract_address
-    }));
+    return result.rows.map(mapCoinRow);
   }
 
   // ========== 价格历史相关操作 ==========
@@ -299,11 +268,11 @@ export class DatabaseService {
         timestamp, price, volume_24h, price_change_24h
       FROM price_history
       WHERE symbol = $1
-        AND timestamp >= NOW() - INTERVAL '${hoursBack} hours'
+        AND timestamp >= NOW() - $2::int * INTERVAL '1 hour'
       ORDER BY timestamp ASC
     `;
 
-    const result = await pool.query(query, [symbol]);
+    const result = await pool.query(query, [symbol, hoursBack]);
     return result.rows;
   }
 
@@ -450,10 +419,10 @@ export class DatabaseService {
   async cleanupOldPriceHistory(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM price_history
-      WHERE timestamp < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE timestamp < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的价格历史记录（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -462,10 +431,10 @@ export class DatabaseService {
   async cleanupOldNotifications(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM notifications
-      WHERE created_at < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE created_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的通知记录（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -474,10 +443,10 @@ export class DatabaseService {
   async cleanupOldCollectionLogs(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM collection_logs
-      WHERE started_at < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE started_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的采集日志（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -637,10 +606,10 @@ export class DatabaseService {
     const query = `
       DELETE FROM upcoming_futures
       WHERE status = 'listed'
-      AND updated_at < NOW() - INTERVAL '${daysToKeep} days'
+      AND updated_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     return result.rowCount || 0;
   }
 
@@ -649,10 +618,10 @@ export class DatabaseService {
     const query = `
       DELETE FROM coins
       WHERE is_active = false
-      AND alpha_listing_time < NOW() - INTERVAL '${monthsToKeep} months'
+      AND alpha_listing_time < NOW() - $1::int * INTERVAL '1 month'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [monthsToKeep]);
     logger.info(`清理了 ${result.rowCount} 个非活跃币对（${monthsToKeep}个月前）`);
     return result.rowCount || 0;
   }
@@ -681,7 +650,8 @@ export class DatabaseService {
     // 获取每个表的行数
     const tablesWithRows = await Promise.all(
       result.rows.map(async (row) => {
-        const countQuery = `SELECT COUNT(*) as count FROM ${row.table}`;
+        // 表名来自 pg_tables，仍按标识符转义
+        const countQuery = `SELECT COUNT(*) as count FROM "${String(row.table).replace(/"/g, '""')}"`;
         try {
           const countResult = await pool.query(countQuery);
           return {

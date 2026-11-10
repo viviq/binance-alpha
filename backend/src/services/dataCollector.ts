@@ -3,20 +3,8 @@ import { dbService, NotificationInput } from '../database/dbService';
 import { messageQueue } from './messageQueue';
 import { logger } from '../utils/logger';
 import { announcementService } from './announcementService';
-import { CoinData, FuturesData } from '../types';
-
-// 解析为有限数字，无法解析时返回 null
-function toFiniteNumber(value: unknown): number | null {
-  if (value === null || value === undefined || value === '') return null;
-  const n = typeof value === 'number' ? value : parseFloat(String(value));
-  return Number.isFinite(n) ? n : null;
-}
-
-// 仅保留正数，其余返回 null
-function positiveOrNull(value: unknown): number | null {
-  const n = toFiniteNumber(value);
-  return n !== null && n > 0 ? n : null;
-}
+import { CoinData } from '../types';
+import { buildCoinData } from './coinBuilder';
 
 export class DataCollector {
   private binanceService: BinanceService;
@@ -139,70 +127,7 @@ export class DataCollector {
       const futuresData = this.binanceService.buildFuturesData(pairSymbol, snapshot, openInterests);
       const tickerData = snapshot.spotTickers.get(pairSymbol) ?? null;
 
-      // 价格优先级：现货 > 合约 > Alpha 链上价格。
-      // 拿不到的字段一律保留 null，绝不生成估算/随机值。
-      let currentPrice: number | null = null;
-      let volume24h: number | null = null;
-      let priceChange24h: number | null = null;
-      let priceSource: 'spot' | 'futures' | 'alpha' | null = null;
-
-      const spotPrice = tickerData ? toFiniteNumber(tickerData.lastPrice) : null;
-      const futuresPrice = futuresData?.is_listed ? toFiniteNumber(futuresData.futures_price) : null;
-      const alphaPrice = toFiniteNumber(alphaCoin.current_price);
-
-      if (spotPrice !== null && spotPrice > 0) {
-        currentPrice = spotPrice;
-        volume24h = toFiniteNumber(tickerData.quoteVolume); // USDT 计价成交额
-        priceChange24h = toFiniteNumber(tickerData.priceChangePercent);
-        priceSource = 'spot';
-      } else if (futuresPrice !== null && futuresPrice > 0) {
-        currentPrice = futuresPrice;
-        volume24h = toFiniteNumber(futuresData?.futures_volume_24h) ?? toFiniteNumber(alphaCoin.volume_24h);
-        priceChange24h = toFiniteNumber(alphaCoin.price_change);
-        priceSource = 'futures';
-      } else if (alphaPrice !== null && alphaPrice > 0) {
-        currentPrice = alphaPrice;
-        volume24h = toFiniteNumber(alphaCoin.volume_24h);
-        priceChange24h = toFiniteNumber(alphaCoin.price_change);
-        priceSource = 'alpha';
-      }
-
-      const circulatingSupply = positiveOrNull(alphaCoin.circulating_supply);
-      const totalSupply = positiveOrNull(alphaCoin.total_supply);
-
-      // 市值：有价格和流通量就按当前价格计算（Alpha 提供的市值基于链上价格，
-      // 现货/合约价格更准确）；否则仅在使用 Alpha 价格时沿用 Alpha 提供的市值。
-      let marketCap: number | null = null;
-      if (currentPrice !== null && circulatingSupply !== null) {
-        marketCap = currentPrice * circulatingSupply;
-      } else if (priceSource === 'alpha') {
-        marketCap = positiveOrNull(alphaCoin.market_cap);
-      }
-
-      const fdv = currentPrice !== null && totalSupply !== null
-        ? currentPrice * totalSupply
-        : positiveOrNull(alphaCoin.fdv);
-
-      const coinData: CoinData = {
-        symbol: alphaCoin.symbol || '',
-        name: alphaCoin.name || alphaCoin.symbol || '',
-        alpha_listing_time: alphaCoin.alpha_listing_time || new Date().toISOString(),
-        current_price: currentPrice,
-        price_change: priceChange24h,
-        volume_24h: volume24h !== null && volume24h >= 0 ? volume24h : null,
-        market_cap: marketCap,
-        circulating_supply: circulatingSupply,
-        total_supply: totalSupply,
-        fdv,
-        futures_data: futuresData || undefined,
-        last_updated: new Date().toISOString(),
-        is_active: alphaCoin.is_active !== undefined ? alphaCoin.is_active : true,
-        alpha_id: alphaCoin.alpha_id,
-        chain_id: alphaCoin.chain_id,
-        contract_address: alphaCoin.contract_address
-      };
-
-      return coinData;
+      return buildCoinData(alphaCoin, tickerData, futuresData);
     } catch (error) {
       logger.error(`处理币种 ${alphaCoin.symbol} 失败:`, error);
       return null;
@@ -236,14 +161,9 @@ export class DataCollector {
       ...newCoins.map(coin => messageQueue.publishNewCoin(coin)),
     ]);
 
-    // 发布价格更新事件
-    await messageQueue.publishPriceUpdate(coinDataList);
-
-    // 发布数据同步事件
+    // 先使缓存失效，再通知各实例的 WebSocket 推送最新数据（推送时会重新读库并回填缓存）
+    await messageQueue.invalidateDataCache();
     await messageQueue.publishDataSync();
-
-    // 清除缓存
-    await messageQueue.clearAllCache();
 
     logger.info(`数据保存完成，共处理 ${coinDataList.length} 个币种`);
   }

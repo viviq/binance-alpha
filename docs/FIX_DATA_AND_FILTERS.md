@@ -117,7 +117,7 @@ npm start
 
 ```bash
 export DATABASE_URL="postgresql://..."
-node verify-data-quality.js
+node scripts/verify-data-quality.js
 ```
 
 ### 3. 如果发现问题
@@ -126,10 +126,10 @@ node verify-data-quality.js
 
 ```bash
 # 清理非Alpha币种
-node clean-non-alpha-coins.js
+node scripts/clean-non-alpha-coins.js
 
 # 清理无效数据
-node verify-and-fix-futures.js
+node scripts/verify-and-fix-futures.js
 
 # 触发数据采集（更新价格）
 cd backend
@@ -272,7 +272,7 @@ console.warn(`过滤无效数据: ${coin.symbol} - 无价格数据`);
 
 ```bash
 # 每天或每周运行一次
-0 0 * * 0 cd /path/to/project && node verify-data-quality.js
+0 0 * * 0 cd /path/to/project && node scripts/verify-data-quality.js
 ```
 
 ## 故障排查
@@ -306,7 +306,7 @@ npm run build
 npm start
 
 # 2. 检查数据质量
-node verify-data-quality.js
+node scripts/verify-data-quality.js
 ```
 
 ### 问题3: FDV 显示为空

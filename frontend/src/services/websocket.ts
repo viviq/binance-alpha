@@ -9,6 +9,9 @@ export class WebSocketService {
   private maxReconnectAttempts: number = 10;
   private reconnectInterval: number = 5000;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private reconnectTimer: NodeJS.Timeout | null = null;
+  // 主动断开时不自动重连
+  private manualClose: boolean = false;
   private eventHandlers: Map<string, WebSocketEventHandler[]> = new Map();
 
   constructor(url?: string) {
@@ -30,11 +33,18 @@ export class WebSocketService {
 
   // 连接WebSocket
   connect(): Promise<void> {
+    // 已在连接或已连接时不重复创建
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return Promise.resolve();
+    }
+    this.manualClose = false;
+
     return new Promise((resolve, reject) => {
       try {
-        this.ws = new WebSocket(this.url);
+        const ws = new WebSocket(this.url);
+        this.ws = ws;
 
-        this.ws.onopen = () => {
+        ws.onopen = () => {
           console.log('WebSocket连接已建立');
           this.reconnectAttempts = 0;
           this.startHeartbeat();
@@ -42,7 +52,7 @@ export class WebSocketService {
           resolve();
         };
 
-        this.ws.onmessage = (event) => {
+        ws.onmessage = (event) => {
           try {
             const message: WebSocketMessage = JSON.parse(event.data);
             this.handleMessage(message);
@@ -51,17 +61,19 @@ export class WebSocketService {
           }
         };
 
-        this.ws.onclose = (event) => {
+        ws.onclose = (event) => {
           console.log('WebSocket连接已关闭:', event.code, event.reason);
+          if (this.ws === ws) this.ws = null;
           this.stopHeartbeat();
           this.emit('disconnected', { code: event.code, reason: event.reason });
-          
-          if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
+
+          // 非主动断开（包括服务端重启时的正常关闭）都尝试重连
+          if (!this.manualClose && this.reconnectAttempts < this.maxReconnectAttempts) {
             this.scheduleReconnect();
           }
         };
 
-        this.ws.onerror = (error) => {
+        ws.onerror = (error) => {
           console.error('WebSocket连接错误:', error);
           this.emit('error', error);
           reject(new Error(`WebSocket连接失败: ${error.type || '未知错误'}`));
@@ -76,9 +88,20 @@ export class WebSocketService {
 
   // 断开连接
   disconnect(): void {
+    this.manualClose = true;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
-      this.ws.close(1000, '主动断开连接');
+      const ws = this.ws;
       this.ws = null;
+      // 先解绑回调，避免关闭过程中触发重连或错误提示
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onerror = null;
+      ws.onclose = null;
+      ws.close(1000, '主动断开连接');
     }
     this.stopHeartbeat();
   }
@@ -92,12 +115,13 @@ export class WebSocketService {
     }
   }
 
-  // 订阅事件
-  on(event: string, handler: WebSocketEventHandler): void {
+  // 订阅事件，返回取消订阅函数
+  on(event: string, handler: WebSocketEventHandler): () => void {
     if (!this.eventHandlers.has(event)) {
       this.eventHandlers.set(event, []);
     }
     this.eventHandlers.get(event)!.push(handler);
+    return () => this.off(event, handler);
   }
 
   // 取消订阅事件
@@ -133,8 +157,6 @@ export class WebSocketService {
 
   // 处理WebSocket消息
   private handleMessage(message: WebSocketMessage): void {
-    console.log('收到WebSocket消息:', message.type);
-
     switch (message.type) {
       case 'initial_data':
         this.emit('initialData', message.data);
@@ -187,7 +209,8 @@ export class WebSocketService {
 
     console.log(`将在 ${backoffDelay}ms 后重连`);
 
-    setTimeout(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect().catch(error => {
         console.error('重连失败:', error);
       });

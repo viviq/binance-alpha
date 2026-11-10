@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS coins (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_coins_symbol ON coins(symbol);
 CREATE INDEX IF NOT EXISTS idx_coins_alpha_listing_time ON coins(alpha_listing_time);
 CREATE INDEX IF NOT EXISTS idx_coins_is_active ON coins(is_active);
 
@@ -35,10 +34,8 @@ CREATE TABLE IF NOT EXISTS price_history (
     timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_price_history_coin_id ON price_history(coin_id);
-CREATE INDEX IF NOT EXISTS idx_price_history_symbol ON price_history(symbol);
+CREATE INDEX IF NOT EXISTS idx_price_history_symbol_timestamp ON price_history(symbol, timestamp);
 CREATE INDEX IF NOT EXISTS idx_price_history_timestamp ON price_history(timestamp);
-CREATE INDEX IF NOT EXISTS idx_price_history_coin_timestamp ON price_history(coin_id, timestamp);
 
 -- 合约数据表
 CREATE TABLE IF NOT EXISTS futures_data (
@@ -153,7 +150,8 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) ph ON true
 LEFT JOIN futures_data fd ON fd.coin_id = c.id
-WHERE c.is_active = true;
+WHERE c.is_active = true
+  AND c.alpha_id IS NOT NULL; -- 只显示真正的 Alpha 币种（与迁移 003 保持一致）
 
 -- 创建索引优化查询性能
 CREATE INDEX IF NOT EXISTS idx_price_history_latest

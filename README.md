@@ -71,9 +71,10 @@ npm start
 
 ### 生产部署
 
-使用Docker Compose一键部署：
+使用Docker Compose一键部署（先复制 `.env.example` 为 `.env` 并填写 `POSTGRES_PASSWORD` 等变量）：
 
 ```bash
+cp .env.example .env
 docker-compose up -d
 ```
 
@@ -145,7 +146,9 @@ binance-alpha-monitor/
 │   │   └── utils/          # 工具函数
 │   ├── Dockerfile
 │   └── package.json
-├── nginx/                  # Nginx配置
+├── docs/                   # 部署指南与历史修复记录
+├── scripts/                # 数据校验/清理脚本、前端部署脚本
+├── Dockerfile              # Railway 后端部署镜像
 ├── docker-compose.yml      # Docker编排
 └── README.md
 ```
@@ -154,10 +157,14 @@ binance-alpha-monitor/
 
 ### 环境变量
 
-后端环境变量：
+后端环境变量（完整示例见 `backend/.env.example`）：
 - `NODE_ENV`: 运行环境 (development/production)
 - `PORT`: 服务端口 (默认3001)
-- `DATA_DIR`: 数据存储目录
+- `DATABASE_URL` 或 `DB_HOST`/`DB_PORT`/`DB_NAME`/`DB_USER`/`DB_PASSWORD`: PostgreSQL 连接
+- `REDIS_URL` 或 `REDIS_HOST`/`REDIS_PORT`/`REDIS_PASSWORD`: Redis 连接
+- `CORS_ORIGINS`: 允许的前端域名，逗号分隔
+- `ADMIN_TOKEN`: 管理接口（清理、数据库统计）令牌，不配置则这些接口关闭
+- `TRUST_PROXY`: 反向代理信任设置，影响按 IP 限流
 
 前端环境变量：
 - `REACT_APP_API_URL`: 后端API地址

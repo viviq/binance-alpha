@@ -4,7 +4,6 @@ import { CoinData } from '../types';
 
 // Redis消息队列频道
 export const CHANNELS = {
-  PRICE_UPDATE: 'price:update',
   NEW_COIN: 'coin:new',
   NEW_FUTURES: 'futures:new',
   DATA_SYNC: 'data:sync',
@@ -14,9 +13,7 @@ export const CHANNELS = {
 // Redis缓存键
 export const CACHE_KEYS = {
   COINS_LIST: 'cache:coins:list',
-  COIN_DETAIL: (symbol: string) => `cache:coin:${symbol}`,
   STATS: 'cache:stats',
-  PRICE_HISTORY: (symbol: string) => `cache:price:history:${symbol}`,
 };
 
 export class MessageQueueService {
@@ -47,22 +44,6 @@ export class MessageQueueService {
   }
 
   // ========== 发布消息 ==========
-
-  // 发布价格更新
-  async publishPriceUpdate(coins: CoinData[]): Promise<void> {
-    try {
-      await redisPub.publish(
-        CHANNELS.PRICE_UPDATE,
-        JSON.stringify({
-          type: 'price_update',
-          data: coins,
-          timestamp: new Date().toISOString()
-        })
-      );
-    } catch (error) {
-      logger.error('发布价格更新失败:', error);
-    }
-  }
 
   // 发布新币种
   async publishNewCoin(coin: CoinData): Promise<void> {
@@ -203,16 +184,12 @@ export class MessageQueueService {
     }
   }
 
-  // 清除所有缓存
-  async clearAllCache(): Promise<void> {
+  // 使数据相关缓存失效：只删除已知的固定键，不使用会阻塞 Redis 的 KEYS 命令
+  async invalidateDataCache(): Promise<void> {
     try {
-      const keys = await redis.keys('cache:*');
-      if (keys.length > 0) {
-        await redis.del(...keys);
-        logger.info(`清除了 ${keys.length} 个缓存`);
-      }
+      await redis.del(CACHE_KEYS.COINS_LIST, CACHE_KEYS.STATS);
     } catch (error) {
-      logger.error('清除所有缓存失败:', error);
+      logger.error('清除数据缓存失败:', error);
     }
   }
 

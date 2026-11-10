@@ -26,15 +26,13 @@ const logger = winston.createLogger({
   ]
 });
 
-// 开发环境添加控制台输出
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.combine(
-      winston.format.colorize(),
-      winston.format.simple()
-    )
-  }));
-}
+// 控制台输出：生产环境输出 JSON（Railway 等平台从 stdout 收集日志，容器内的日志文件会随重启丢失），
+// 开发环境输出带颜色的简洁格式
+logger.add(new winston.transports.Console({
+  format: process.env.NODE_ENV === 'production'
+    ? winston.format.combine(winston.format.timestamp(), winston.format.errors({ stack: true }), winston.format.json())
+    : winston.format.combine(winston.format.colorize(), winston.format.simple())
+}));
 
 export default logger;
 export { logger };

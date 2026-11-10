@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
+import { logger } from '../utils/logger';
 import { dbService } from '../database/dbService';
 import { messageQueue } from '../services/messageQueue';
-import { BinanceService } from '../services/binanceService';
 import { announcementService } from '../services/announcementService';
+import { getCoinsCached } from '../services/coinCache';
 import { requireAdmin } from '../middleware/adminAuth';
 import { CoinData, FilterOptions, PaginatedResponse, StatsData, ApiResponse } from '../types';
 
 const router = Router();
-const binanceService = new BinanceService();
 
 // 获取币对列表
 router.get('/coins', async (req: Request, res: Response) => {
@@ -23,14 +23,8 @@ router.get('/coins', async (req: Request, res: Response) => {
       market_cap_max
     } = req.query;
 
-    // 尝试从缓存获取
-    const cachedCoins = await messageQueue.getCachedCoins();
-    let coins = cachedCoins || await dbService.getAllCoins();
-
-    // 如果没有缓存，保存到缓存
-    if (!cachedCoins) {
-      await messageQueue.cacheCoins(coins, 60);
-    }
+    // 从缓存获取（未命中时查库并回填）；复制一份，后续排序不影响共享数组
+    let coins = [...await getCoinsCached()];
 
     // 搜索筛选
     if (search) {
@@ -116,7 +110,7 @@ router.get('/coins', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('获取币对列表失败:', error);
+    logger.error('获取币对列表失败:', error);
     res.status(500).json({
       success: false,
       error: '服务器内部错误',
@@ -130,8 +124,7 @@ router.get('/coins/:symbol', async (req: Request, res: Response) => {
   try {
     const { symbol } = req.params;
 
-    // 从数据库获取所有币对（已缓存）
-    const coins = await dbService.getAllCoins();
+    const coins = await getCoinsCached();
     const coin = coins.find(c => c.symbol === symbol);
 
     if (!coin) {
@@ -150,7 +143,7 @@ router.get('/coins/:symbol', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('获取币对详情失败:', error);
+    logger.error('获取币对详情失败:', error);
     res.status(500).json({
       success: false,
       error: '服务器内部错误',
@@ -182,7 +175,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('获取统计数据失败:', error);
+    logger.error('获取统计数据失败:', error);
     res.status(500).json({
       success: false,
       error: '服务器内部错误',
@@ -213,7 +206,7 @@ router.get('/coins/:symbol/history', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error) {
-    console.error('获取历史数据失败:', error);
+    logger.error('获取历史数据失败:', error);
     res.status(500).json({
       success: false,
       error: '服务器内部错误',
@@ -236,11 +229,11 @@ router.get('/upcoming-futures', async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error: any) {
-    console.error('获取即将上线合约失败:', error);
+    logger.error('获取即将上线合约失败:', error);
 
     // 如果表不存在，返回空数组而不是错误（表会在数据库初始化时创建）
     if (error.code === '42P01') {
-      console.warn('upcoming_futures表尚未创建，返回空数组');
+      logger.warn('upcoming_futures表尚未创建，返回空数组');
       const response: ApiResponse<any[]> = {
         success: true,
         data: [],
@@ -276,7 +269,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
     }
     lastRefreshAt = now;
 
-    console.log('开始手动刷新即将上线的合约数据...');
+    logger.info('开始手动刷新即将上线的合约数据...');
 
     // 从币安API获取最新公告
     const upcomingFutures = await announcementService.getUpcomingFutures();
@@ -296,7 +289,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
 
       await dbService.batchUpsertUpcomingFutures(dataList);
 
-      console.log(`成功刷新 ${upcomingFutures.length} 个即将上线的合约`);
+      logger.info(`成功刷新 ${upcomingFutures.length} 个即将上线的合约`);
 
       const response: ApiResponse<{ count: number; data: any[] }> = {
         success: true,
@@ -321,7 +314,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
       res.json(response);
     }
   } catch (error: any) {
-    console.error('手动刷新即将上线合约失败:', error);
+    logger.error('手动刷新即将上线合约失败:', error);
 
     res.status(500).json({
       success: false,
@@ -344,7 +337,7 @@ router.get('/database/stats', requireAdmin, async (req: Request, res: Response) 
 
     res.json(response);
   } catch (error: any) {
-    console.error('获取数据库统计失败:', error);
+    logger.error('获取数据库统计失败:', error);
 
     res.status(500).json({
       success: false,
@@ -357,11 +350,11 @@ router.get('/database/stats', requireAdmin, async (req: Request, res: Response) 
 // 手动清理数据库旧数据
 router.post('/cleanup', requireAdmin, async (req: Request, res: Response) => {
   try {
-    console.log('开始手动清理数据库旧数据...');
+    logger.info('开始手动清理数据库旧数据...');
 
     const result = await dbService.cleanupAllOldData();
 
-    console.log(`数据清理完成，共删除 ${result.total} 条记录`);
+    logger.info(`数据清理完成，共删除 ${result.total} 条记录`);
 
     const response: ApiResponse<{
       priceHistory: number;
@@ -381,7 +374,7 @@ router.post('/cleanup', requireAdmin, async (req: Request, res: Response) => {
 
     res.json(response);
   } catch (error: any) {
-    console.error('手动清理数据失败:', error);
+    logger.error('手动清理数据失败:', error);
 
     res.status(500).json({
       success: false,
@@ -394,11 +387,11 @@ router.post('/cleanup', requireAdmin, async (req: Request, res: Response) => {
 // 清理所有 collection_logs（日志表可以全部清空）
 router.post('/cleanup/logs', requireAdmin, async (req: Request, res: Response) => {
   try {
-    console.log('开始清理所有采集日志...');
+    logger.info('开始清理所有采集日志...');
 
     const result = await dbService.cleanupOldCollectionLogs(0); // 清理所有
 
-    console.log(`采集日志清理完成，共删除 ${result} 条记录`);
+    logger.info(`采集日志清理完成，共删除 ${result} 条记录`);
 
     const response: ApiResponse<{
       deleted: number;
@@ -414,7 +407,7 @@ router.post('/cleanup/logs', requireAdmin, async (req: Request, res: Response) =
 
     res.json(response);
   } catch (error: any) {
-    console.error('清理采集日志失败:', error);
+    logger.error('清理采集日志失败:', error);
 
     res.status(500).json({
       success: false,
