@@ -112,24 +112,12 @@ const wsServer = new WebSocketServer(server);
 // 初始化数据采集器
 const dataCollector = new DataCollector();
 
-// 设置定时任务（生产环境延迟启动，避免启动时过载）
-if (process.env.NODE_ENV === 'production') {
-  // 生产环境：启动 5 分钟后再开始定时任务
-  setTimeout(() => {
-    logger.info('启动定时数据采集任务');
-    cron.schedule('*/5 * * * *', async () => {
-      logger.info('开始定时数据采集');
-      try {
-        await dataCollector.startCollection();
-        logger.info('定时数据采集完成');
-      } catch (error) {
-        logger.error('定时数据采集失败:', error);
-      }
-    });
-  }, 300000); // 5 分钟后启动
-} else {
-  // 开发环境：正常启动
-  cron.schedule('*/1 * * * *', async () => {
+// 定时采集：生产环境每 5 分钟，开发环境每 1 分钟。
+// 在数据库初始化完成后再启动（见 server.listen 回调），避免在表结构/迁移就绪前采集。
+// 采集现在只需少量批量请求（本地实测约 2.5 秒），无需再为"启动过载"延迟 5 分钟。
+function startCollectionSchedule(): void {
+  const expression = process.env.NODE_ENV === 'production' ? '*/5 * * * *' : '*/1 * * * *';
+  cron.schedule(expression, async () => {
     logger.info('开始定时数据采集');
     try {
       await dataCollector.startCollection();
@@ -138,6 +126,7 @@ if (process.env.NODE_ENV === 'production') {
       logger.error('定时数据采集失败:', error);
     }
   });
+  logger.info(`定时数据采集任务已启动（${expression}）`);
 }
 
 // 设置每日自动清理旧数据任务（每天凌晨3点执行）
@@ -175,13 +164,8 @@ async function initializeDatabase() {
   await runMigrations();
 }
 
-// 启动时执行一次数据采集（生产环境延迟启动）
+// 启动时立即执行一次数据采集，避免部署/重启后页面长时间没有数据
 async function initializeData() {
-  if (process.env.NODE_ENV === 'production') {
-    logger.info('生产环境：跳过启动时数据采集，将在 5 分钟后由定时任务执行');
-    return;
-  }
-
   try {
     logger.info('初始化数据采集');
     await dataCollector.startCollection();
@@ -219,13 +203,17 @@ server.listen(PORT, async () => {
   try {
     // 初始化数据库
     await initializeDatabase();
-
-    // 初始化数据
-    await initializeData();
   } catch (error) {
     logger.error('初始化失败，但服务器继续运行:', error);
     // 不要让服务器崩溃，继续运行以提供健康检查接口
   }
+
+  // 无论初始化是否成功都启动定时采集（数据库恢复后可自动补上数据）；
+  // 与首次采集重叠时由 DataCollector 的 isCollecting 跳过
+  startCollectionSchedule();
+
+  // 立即采集一次
+  await initializeData();
 });
 
 export default app;
