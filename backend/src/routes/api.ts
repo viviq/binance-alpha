@@ -3,6 +3,7 @@ import { dbService } from '../database/dbService';
 import { messageQueue } from '../services/messageQueue';
 import { BinanceService } from '../services/binanceService';
 import { announcementService } from '../services/announcementService';
+import { requireAdmin } from '../middleware/adminAuth';
 import { CoinData, FilterOptions, PaginatedResponse, StatsData, ApiResponse } from '../types';
 
 const router = Router();
@@ -257,8 +258,24 @@ router.get('/upcoming-futures', async (req: Request, res: Response) => {
 });
 
 // 手动刷新即将上线的合约
+// 手动刷新冷却：公开接口，限制全局刷新频率，避免被滥用去频繁请求币安公告接口
+const REFRESH_COOLDOWN_MS = 60 * 1000;
+let lastRefreshAt = 0;
+
 router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => {
   try {
+    const now = Date.now();
+    if (now - lastRefreshAt < REFRESH_COOLDOWN_MS) {
+      // 冷却期内直接返回数据库中的现有数据
+      const existing = await dbService.getUpcomingFutures();
+      return res.json({
+        success: true,
+        data: { count: existing.length, data: existing },
+        timestamp: new Date().toISOString()
+      });
+    }
+    lastRefreshAt = now;
+
     console.log('开始手动刷新即将上线的合约数据...');
 
     // 从币安API获取最新公告
@@ -315,7 +332,7 @@ router.post('/upcoming-futures/refresh', async (req: Request, res: Response) => 
 });
 
 // 获取数据库统计信息
-router.get('/database/stats', async (req: Request, res: Response) => {
+router.get('/database/stats', requireAdmin, async (req: Request, res: Response) => {
   try {
     const stats = await dbService.getDatabaseStats();
 
@@ -338,7 +355,7 @@ router.get('/database/stats', async (req: Request, res: Response) => {
 });
 
 // 手动清理数据库旧数据
-router.post('/cleanup', async (req: Request, res: Response) => {
+router.post('/cleanup', requireAdmin, async (req: Request, res: Response) => {
   try {
     console.log('开始手动清理数据库旧数据...');
 
@@ -375,7 +392,7 @@ router.post('/cleanup', async (req: Request, res: Response) => {
 });
 
 // 清理所有 collection_logs（日志表可以全部清空）
-router.post('/cleanup/logs', async (req: Request, res: Response) => {
+router.post('/cleanup/logs', requireAdmin, async (req: Request, res: Response) => {
   try {
     console.log('开始清理所有采集日志...');
 
