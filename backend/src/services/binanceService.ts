@@ -138,7 +138,9 @@ export class BinanceService {
             is_active: true,
             alpha_id: token.alphaId,
             chain_id: token.chainId,
-            contract_address: token.contractAddress
+            contract_address: token.contractAddress,
+            // listingCex 为 true 表示该 Alpha 代币已正式上线币安，cexCoinName 为其币安代码
+            cex_coin_name: token.listingCex && token.cexCoinName ? String(token.cexCoinName) : undefined
           });
         } catch (error) {
           if (process.env.NODE_ENV !== 'production') {
@@ -185,7 +187,11 @@ export class BinanceService {
       futuresTickerRes.status === 'fulfilled' && Array.isArray(futuresTickerRes.value.data)
     ) {
       for (const s of futuresInfoRes.value.data.symbols) {
-        if (s.status === 'TRADING' && s.quoteAsset === 'USDT') snapshot.futuresSymbols.set(s.symbol, s);
+        // 只保留加密货币永续合约，排除股票/商品等 TradFi 合约（如 ACNUSDT、KOUSDT 是美股永续）
+        const isCryptoPerpetual =
+          (s.contractType === undefined || s.contractType === 'PERPETUAL') &&
+          (s.underlyingType === undefined || s.underlyingType === 'COIN');
+        if (s.status === 'TRADING' && s.quoteAsset === 'USDT' && isCryptoPerpetual) snapshot.futuresSymbols.set(s.symbol, s);
       }
       for (const t of futuresTickerRes.value.data) snapshot.futuresTickers.set(t.symbol, t);
       snapshot.futuresOk = true;

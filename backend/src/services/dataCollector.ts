@@ -4,7 +4,7 @@ import { messageQueue } from './messageQueue';
 import { logger } from '../utils/logger';
 import { announcementService } from './announcementService';
 import { CoinData } from '../types';
-import { buildCoinData } from './coinBuilder';
+import { buildCoinData, binancePairSymbol, isSameAsset, selectMatchingMarketData, toFiniteNumber } from './coinBuilder';
 
 export class DataCollector {
   private binanceService: BinanceService;
@@ -103,8 +103,13 @@ export class DataCollector {
 
     // 只为已上线合约的 Alpha 币种请求未平仓量
     const listedFuturesSymbols = alphaCoins
-      .map(c => `${c.symbol}USDT`)
-      .filter(s => snapshot.futuresSymbols.has(s) && snapshot.futuresTickers.has(s));
+      .filter(c => {
+        const pair = binancePairSymbol(c);
+        if (!snapshot.futuresSymbols.has(pair)) return false;
+        // 价格对不上的同名合约不请求未平仓量
+        return isSameAsset(toFiniteNumber(snapshot.futuresTickers.get(pair)?.lastPrice), c);
+      })
+      .map(c => binancePairSymbol(c));
     const openInterests = await this.binanceService.getOpenInterests(listedFuturesSymbols, this.CONCURRENT_LIMIT);
 
     const coinDataList: CoinData[] = [];
@@ -123,10 +128,12 @@ export class DataCollector {
     openInterests: Map<string, number>
   ): CoinData | null {
     try {
-      const pairSymbol = `${alphaCoin.symbol}USDT`;
-      const futuresData = this.binanceService.buildFuturesData(pairSymbol, snapshot, openInterests);
-      const tickerData = snapshot.spotTickers.get(pairSymbol) ?? null;
+      const pairSymbol = binancePairSymbol(alphaCoin);
+      const rawFutures = this.binanceService.buildFuturesData(pairSymbol, snapshot, openInterests);
+      const rawTicker = snapshot.spotTickers.get(pairSymbol) ?? null;
 
+      // 同代码不一定是同一资产：价格对不上时丢弃对应的现货/合约数据
+      const { tickerData, futuresData } = selectMatchingMarketData(alphaCoin, rawTicker, rawFutures);
       return buildCoinData(alphaCoin, tickerData, futuresData);
     } catch (error) {
       logger.error(`处理币种 ${alphaCoin.symbol} 失败:`, error);

@@ -17,6 +17,8 @@ export interface CoinData {
   alpha_id?: string;
   chain_id?: string;
   contract_address?: string;
+  // Alpha 标记已在币安上线时对应的币安币种代码（仅采集过程使用，不入库）
+  cex_coin_name?: string;
 }
 
 // 合约数据类型

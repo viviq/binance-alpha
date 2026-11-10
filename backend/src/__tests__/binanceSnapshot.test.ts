@@ -60,3 +60,22 @@ describe('BinanceService.getOpenInterests', () => {
     expect(result.has('BADUSDT')).toBe(false);
   });
 });
+
+describe('BinanceService.getMarketSnapshot', () => {
+  it('keeps only crypto perpetuals and drops TradFi (equity) contracts', async () => {
+    const service: any = new BinanceService();
+    service.spotApi = { get: async () => ({ data: [] }) };
+    service.futuresApi = {
+      get: async (path: string) => path === '/exchangeInfo'
+        ? { data: { symbols: [
+            { symbol: 'CTUSDT', status: 'TRADING', quoteAsset: 'USDT', contractType: 'PERPETUAL', underlyingType: 'COIN' },
+            { symbol: 'ACNUSDT', status: 'TRADING', quoteAsset: 'USDT', contractType: 'TRADIFI_PERPETUAL', underlyingType: 'EQUITY' },
+            { symbol: 'BTCUSDT_261225', status: 'TRADING', quoteAsset: 'USDT', contractType: 'CURRENT_QUARTER', underlyingType: 'COIN' },
+          ] } }
+        : { data: [] },
+    };
+    const snap: MarketSnapshot = await service.getMarketSnapshot();
+    expect(snap.futuresOk).toBe(true);
+    expect([...snap.futuresSymbols.keys()]).toEqual(['CTUSDT']);
+  });
+});
