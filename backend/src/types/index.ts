@@ -5,7 +5,7 @@ export interface CoinData {
   alpha_listing_time: string;
   current_price: number | null;
   market_cap: number | null;
-  circulating_supply: number;
+  circulating_supply: number | null;
   total_supply?: number | null;
   fdv?: number | null;
   volume_24h: number | null;

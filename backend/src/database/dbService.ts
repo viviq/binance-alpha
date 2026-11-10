@@ -1,63 +1,199 @@
+import { PoolClient } from 'pg';
 import { pool } from './config';
+import { mapCoinRow } from './mappers';
 import { CoinData, FuturesData } from '../types';
 import { logger } from '../utils/logger';
+
+type Queryable = Pick<PoolClient, 'query'>;
+
+export interface NotificationInput {
+  type: string;
+  title: string;
+  message: string;
+  coinSymbol?: string;
+}
+
 
 export class DatabaseService {
   // ========== 币对相关操作 ==========
 
   // 保存或更新币对信息
-  async upsertCoin(coin: CoinData): Promise<number> {
-    const client = await pool.connect();
-    try {
-      const query = `
-        INSERT INTO coins (
-          symbol, name, alpha_listing_time, is_active,
-          alpha_id, chain_id, contract_address
-        )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        ON CONFLICT (symbol)
-        DO UPDATE SET
-          name = EXCLUDED.name,
-          is_active = EXCLUDED.is_active,
-          alpha_id = EXCLUDED.alpha_id,
-          chain_id = EXCLUDED.chain_id,
-          contract_address = EXCLUDED.contract_address,
-          updated_at = CURRENT_TIMESTAMP
-        RETURNING id
-      `;
+  async upsertCoin(coin: CoinData, db: Queryable = pool): Promise<number> {
+    const query = `
+      INSERT INTO coins (
+        symbol, name, alpha_listing_time, is_active,
+        alpha_id, chain_id, contract_address
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      ON CONFLICT (symbol)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        is_active = EXCLUDED.is_active,
+        alpha_id = EXCLUDED.alpha_id,
+        chain_id = EXCLUDED.chain_id,
+        contract_address = EXCLUDED.contract_address,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING id
+    `;
 
-      const values = [
-        coin.symbol,
-        coin.name,
-        coin.alpha_listing_time,
-        coin.is_active !== undefined ? coin.is_active : true,
-        coin.alpha_id || null,
-        coin.chain_id || null,
-        coin.contract_address || null
-      ];
+    const values = [
+      coin.symbol,
+      coin.name,
+      coin.alpha_listing_time,
+      coin.is_active !== undefined ? coin.is_active : true,
+      coin.alpha_id || null,
+      coin.chain_id || null,
+      coin.contract_address || null
+    ];
 
-      const result = await client.query(query, values);
-      return result.rows[0].id;
-    } finally {
-      client.release();
-    }
+    const result = await db.query(query, values);
+    return result.rows[0].id;
   }
 
-  // 批量保存币对数据
-  async batchUpsertCoins(coins: CoinData[]): Promise<void> {
+  // 在一个事务中批量保存一轮采集结果：币对、价格历史、合约数据、通知。
+  // 每类数据只执行一条 SQL（unnest 数组参数），不再逐条查询/写入。
+  async saveCollectionResults(
+    coins: CoinData[],
+    notifications: NotificationInput[] = []
+  ): Promise<Map<string, number>> {
+    // 同一 symbol 只保留最后一条，避免 ON CONFLICT 同一行被更新两次
+    const unique = Array.from(new Map(coins.map(c => [c.symbol, c])).values());
+    const coinIds = new Map<string, number>();
+    if (unique.length === 0 && notifications.length === 0) return coinIds;
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
-      for (const coin of coins) {
-        await this.upsertCoin(coin);
+      if (unique.length > 0) {
+        // 1. 币对基础信息
+        const coinResult = await client.query(
+          `
+          INSERT INTO coins (symbol, name, alpha_listing_time, is_active, alpha_id, chain_id, contract_address)
+          SELECT * FROM unnest($1::text[], $2::text[], $3::timestamp[], $4::boolean[], $5::text[], $6::text[], $7::text[])
+          ON CONFLICT (symbol)
+          DO UPDATE SET
+            name = EXCLUDED.name,
+            is_active = EXCLUDED.is_active,
+            alpha_id = EXCLUDED.alpha_id,
+            chain_id = EXCLUDED.chain_id,
+            contract_address = EXCLUDED.contract_address,
+            updated_at = CURRENT_TIMESTAMP
+          RETURNING id, symbol
+          `,
+          [
+            unique.map(c => c.symbol),
+            unique.map(c => c.name),
+            unique.map(c => c.alpha_listing_time),
+            unique.map(c => c.is_active !== undefined ? c.is_active : true),
+            unique.map(c => c.alpha_id || null),
+            unique.map(c => c.chain_id || null),
+            unique.map(c => c.contract_address || null),
+          ]
+        );
+        for (const row of coinResult.rows) coinIds.set(row.symbol, row.id);
+
+        // 2. 价格历史（同一轮使用同一个时间戳）
+        await client.query(
+          `
+          INSERT INTO price_history (
+            coin_id, symbol, price, volume_24h, market_cap,
+            circulating_supply, total_supply, fdv, price_change_24h, timestamp
+          )
+          SELECT t.*, $10::timestamp
+          FROM unnest(
+            $1::int[], $2::text[], $3::numeric[], $4::numeric[], $5::numeric[],
+            $6::numeric[], $7::numeric[], $8::numeric[], $9::numeric[]
+          ) AS t
+          `,
+          [
+            unique.map(c => coinIds.get(c.symbol)),
+            unique.map(c => c.symbol),
+            unique.map(c => c.current_price ?? null),
+            unique.map(c => c.volume_24h ?? null),
+            unique.map(c => c.market_cap ?? null),
+            unique.map(c => c.circulating_supply ?? null),
+            unique.map(c => c.total_supply ?? null),
+            unique.map(c => c.fdv ?? null),
+            unique.map(c => c.price_change ?? null),
+            new Date(),
+          ]
+        );
+
+        // 3. 合约数据（futures_data 为空表示本轮拿不到合约数据，保留数据库现有状态）
+        const withFutures = unique.filter(c => c.futures_data);
+        if (withFutures.length > 0) {
+          const f = (c: CoinData) => c.futures_data as FuturesData;
+          await client.query(
+            `
+            INSERT INTO futures_data (
+              coin_id, symbol, is_listed, listing_time, futures_price,
+              open_interest, open_interest_1h, oi_to_mcap_ratio,
+              open_interest_market_cap_ratio, futures_volume_24h,
+              spot_futures_spread, mark_price, index_price
+            )
+            SELECT * FROM unnest(
+              $1::int[], $2::text[], $3::boolean[], $4::timestamp[], $5::numeric[],
+              $6::numeric[], $7::numeric[], $8::numeric[],
+              $9::numeric[], $10::numeric[],
+              $11::numeric[], $12::numeric[], $13::numeric[]
+            )
+            ON CONFLICT (coin_id)
+            DO UPDATE SET
+              is_listed = EXCLUDED.is_listed,
+              listing_time = EXCLUDED.listing_time,
+              futures_price = EXCLUDED.futures_price,
+              open_interest = EXCLUDED.open_interest,
+              open_interest_1h = EXCLUDED.open_interest_1h,
+              oi_to_mcap_ratio = EXCLUDED.oi_to_mcap_ratio,
+              open_interest_market_cap_ratio = EXCLUDED.open_interest_market_cap_ratio,
+              futures_volume_24h = EXCLUDED.futures_volume_24h,
+              spot_futures_spread = EXCLUDED.spot_futures_spread,
+              mark_price = EXCLUDED.mark_price,
+              index_price = EXCLUDED.index_price,
+              updated_at = CURRENT_TIMESTAMP
+            `,
+            [
+              withFutures.map(c => coinIds.get(c.symbol)),
+              withFutures.map(c => c.symbol),
+              withFutures.map(c => f(c).is_listed),
+              withFutures.map(c => f(c).listing_time || null),
+              withFutures.map(c => f(c).futures_price ?? null),
+              withFutures.map(c => f(c).open_interest ?? null),
+              withFutures.map(c => f(c).open_interest_1h ?? null),
+              withFutures.map(c => f(c).oi_to_mcap_ratio ?? null),
+              withFutures.map(c => f(c).open_interest_market_cap_ratio ?? null),
+              withFutures.map(c => f(c).futures_volume_24h ?? f(c).volume_24h ?? null),
+              withFutures.map(c => f(c).spot_futures_spread ?? null),
+              withFutures.map(c => f(c).mark_price ?? null),
+              withFutures.map(c => f(c).index_price ?? null),
+            ]
+          );
+        }
+      }
+
+      // 4. 通知
+      if (notifications.length > 0) {
+        await client.query(
+          `
+          INSERT INTO notifications (type, title, message, coin_symbol)
+          SELECT * FROM unnest($1::text[], $2::text[], $3::text[], $4::text[])
+          `,
+          [
+            notifications.map(n => n.type),
+            notifications.map(n => n.title),
+            notifications.map(n => n.message),
+            notifications.map(n => n.coinSymbol || null),
+          ]
+        );
       }
 
       await client.query('COMMIT');
-      logger.info(`批量保存 ${coins.length} 个币对成功`);
+      logger.info(`批量保存完成：${unique.length} 个币对，${notifications.length} 条通知`);
+      return coinIds;
     } catch (error) {
       await client.query('ROLLBACK');
-      logger.error('批量保存币对失败:', error);
+      logger.error('批量保存采集结果失败:', error);
       throw error;
     } finally {
       client.release();
@@ -65,9 +201,9 @@ export class DatabaseService {
   }
 
   // 获取币对ID
-  async getCoinId(symbol: string): Promise<number | null> {
+  async getCoinId(symbol: string, db: Queryable = pool): Promise<number | null> {
     const query = 'SELECT id FROM coins WHERE symbol = $1';
-    const result = await pool.query(query, [symbol]);
+    const result = await db.query(query, [symbol]);
     return result.rows.length > 0 ? result.rows[0].id : null;
   }
 
@@ -94,39 +230,13 @@ export class DatabaseService {
 
     const result = await pool.query(query);
 
-    return result.rows.map(row => ({
-      symbol: row.symbol,
-      name: row.name,
-      alpha_listing_time: row.alpha_listing_time,
-      current_price: row.current_price ? parseFloat(row.current_price) : null,
-      market_cap: row.market_cap ? parseFloat(row.market_cap) : null,
-      circulating_supply: row.circulating_supply ? parseFloat(row.circulating_supply) : 0,
-      total_supply: row.total_supply ? parseFloat(row.total_supply) : null,
-      fdv: row.fdv ? parseFloat(row.fdv) : null,
-      volume_24h: row.volume_24h ? parseFloat(row.volume_24h) : null,
-      price_change: row.price_change ? parseFloat(row.price_change) : null,
-      futures_data: row.futures_is_listed ? {
-        is_listed: row.futures_is_listed,
-        listing_time: row.futures_listing_time,
-        futures_price: row.futures_price ? parseFloat(row.futures_price) : null,
-        open_interest: row.open_interest ? parseFloat(row.open_interest) : null,
-        open_interest_1h: row.open_interest_1h ? parseFloat(row.open_interest_1h) : null,
-        oi_to_mcap_ratio: row.oi_to_mcap_ratio ? parseFloat(row.oi_to_mcap_ratio) : null,
-        futures_volume_24h: row.futures_volume_24h ? parseFloat(row.futures_volume_24h) : null,
-        spot_futures_spread: row.spot_futures_spread ? parseFloat(row.spot_futures_spread) : null,
-      } : undefined,
-      last_updated: row.last_updated || new Date().toISOString(),
-      is_active: row.is_active,
-      alpha_id: row.alpha_id,
-      chain_id: row.chain_id,
-      contract_address: row.contract_address
-    }));
+    return result.rows.map(mapCoinRow);
   }
 
   // ========== 价格历史相关操作 ==========
 
   // 保存价格历史数据
-  async savePriceHistory(coinId: number, coin: CoinData): Promise<void> {
+  async savePriceHistory(coinId: number, coin: CoinData, db: Queryable = pool): Promise<void> {
     const query = `
       INSERT INTO price_history (
         coin_id, symbol, price, volume_24h, market_cap,
@@ -148,31 +258,7 @@ export class DatabaseService {
       new Date()
     ];
 
-    await pool.query(query, values);
-  }
-
-  // 批量保存价格历史
-  async batchSavePriceHistory(coins: CoinData[]): Promise<void> {
-    const client = await pool.connect();
-    try {
-      await client.query('BEGIN');
-
-      for (const coin of coins) {
-        const coinId = await this.getCoinId(coin.symbol);
-        if (coinId) {
-          await this.savePriceHistory(coinId, coin);
-        }
-      }
-
-      await client.query('COMMIT');
-      logger.info(`批量保存 ${coins.length} 条价格历史成功`);
-    } catch (error) {
-      await client.query('ROLLBACK');
-      logger.error('批量保存价格历史失败:', error);
-      throw error;
-    } finally {
-      client.release();
-    }
+    await db.query(query, values);
   }
 
   // 获取价格历史
@@ -182,11 +268,11 @@ export class DatabaseService {
         timestamp, price, volume_24h, price_change_24h
       FROM price_history
       WHERE symbol = $1
-        AND timestamp >= NOW() - INTERVAL '${hoursBack} hours'
+        AND timestamp >= NOW() - $2::int * INTERVAL '1 hour'
       ORDER BY timestamp ASC
     `;
 
-    const result = await pool.query(query, [symbol]);
+    const result = await pool.query(query, [symbol, hoursBack]);
     return result.rows;
   }
 
@@ -223,14 +309,14 @@ export class DatabaseService {
       symbol,
       futuresData.is_listed,
       futuresData.listing_time || null,
-      futuresData.futures_price || null,
-      futuresData.open_interest || null,
-      futuresData.open_interest_1h || null,
-      futuresData.oi_to_mcap_ratio || null,
-      futuresData.open_interest_market_cap_ratio || null,
-      futuresData.futures_volume_24h || futuresData.volume_24h || null,
-      futuresData.spot_futures_spread || null,
-      futuresData.mark_price || null,
+      futuresData.futures_price ?? null,
+      futuresData.open_interest ?? null,
+      futuresData.open_interest_1h ?? null,
+      futuresData.oi_to_mcap_ratio ?? null,
+      futuresData.open_interest_market_cap_ratio ?? null,
+      futuresData.futures_volume_24h ?? futuresData.volume_24h ?? null,
+      futuresData.spot_futures_spread ?? null,
+      futuresData.mark_price ?? null,
       futuresData.index_price || null
     ];
 
@@ -333,10 +419,10 @@ export class DatabaseService {
   async cleanupOldPriceHistory(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM price_history
-      WHERE timestamp < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE timestamp < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的价格历史记录（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -345,10 +431,10 @@ export class DatabaseService {
   async cleanupOldNotifications(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM notifications
-      WHERE created_at < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE created_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的通知记录（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -357,10 +443,10 @@ export class DatabaseService {
   async cleanupOldCollectionLogs(daysToKeep: number = 7): Promise<number> {
     const query = `
       DELETE FROM collection_logs
-      WHERE started_at < NOW() - INTERVAL '${daysToKeep} days'
+      WHERE started_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     logger.info(`清理了 ${result.rowCount} 条旧的采集日志（保留${daysToKeep}天）`);
     return result.rowCount || 0;
   }
@@ -406,7 +492,7 @@ export class DatabaseService {
     announcementUrl: string;
     expectedListingDate?: Date;
     expectedListingTime?: Date;
-  }): Promise<void> {
+  }, db: Queryable = pool): Promise<void> {
     const query = `
       INSERT INTO upcoming_futures (
         symbol, name, announcement_id, announcement_title, announcement_url,
@@ -424,7 +510,7 @@ export class DatabaseService {
         updated_at = CURRENT_TIMESTAMP
     `;
 
-    await pool.query(query, [
+    await db.query(query, [
       data.symbol,
       data.name || null,
       data.announcementId,
@@ -450,7 +536,7 @@ export class DatabaseService {
       await client.query('BEGIN');
 
       for (const data of dataList) {
-        await this.upsertUpcomingFutures(data);
+        await this.upsertUpcomingFutures(data, client);
       }
 
       await client.query('COMMIT');
@@ -520,10 +606,10 @@ export class DatabaseService {
     const query = `
       DELETE FROM upcoming_futures
       WHERE status = 'listed'
-      AND updated_at < NOW() - INTERVAL '${daysToKeep} days'
+      AND updated_at < NOW() - $1::int * INTERVAL '1 day'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [daysToKeep]);
     return result.rowCount || 0;
   }
 
@@ -532,10 +618,10 @@ export class DatabaseService {
     const query = `
       DELETE FROM coins
       WHERE is_active = false
-      AND alpha_listing_time < NOW() - INTERVAL '${monthsToKeep} months'
+      AND alpha_listing_time < NOW() - $1::int * INTERVAL '1 month'
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, [monthsToKeep]);
     logger.info(`清理了 ${result.rowCount} 个非活跃币对（${monthsToKeep}个月前）`);
     return result.rowCount || 0;
   }
@@ -564,7 +650,8 @@ export class DatabaseService {
     // 获取每个表的行数
     const tablesWithRows = await Promise.all(
       result.rows.map(async (row) => {
-        const countQuery = `SELECT COUNT(*) as count FROM ${row.table}`;
+        // 表名来自 pg_tables，仍按标识符转义
+        const countQuery = `SELECT COUNT(*) as count FROM "${String(row.table).replace(/"/g, '""')}"`;
         try {
           const countResult = await pool.query(countQuery);
           return {

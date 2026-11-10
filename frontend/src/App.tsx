@@ -157,112 +157,115 @@ const App: React.FC = () => {
     }
   }, [notifications]);
 
-  // 使用useCallback优化函数引用
+  // 通过 REST 拉取全量数据（手动刷新、WebSocket 不可用时的兜底）
+  // 无价格的币种已由后端过滤
   const loadData = useCallback(async () => {
-    try {
-      const [coinsData, statsData] = await Promise.all([
-        ApiService.getCoins({}),
-        ApiService.getStats(),
-      ]);
+    const [coinsData, statsData] = await Promise.all([
+      ApiService.getCoins({}),
+      ApiService.getStats(),
+    ]);
+    setCoins(coinsData.items);
+    setStats(statsData);
+  }, [setCoins, setStats]);
 
-      // 过滤掉无效数据：必须有价格且价格大于0
-      const validCoins = (coinsData.items || coinsData).filter((coin: any) => {
-        const hasValidPrice = coin.current_price && coin.current_price > 0;
-        if (!hasValidPrice) {
-          console.warn(`过滤无效数据: ${coin.symbol} - 无价格数据`);
-          return false;
-        }
-        return true;
-      });
+  // 初始化：注册 WebSocket 事件、建立连接。
+  // 币对列表由 WebSocket 的 initial_data 提供，REST 只拉统计数据，避免首屏重复拉取全量列表。
+  useEffect(() => {
+    let cancelled = false;
+    let fallbackTimer: ReturnType<typeof setTimeout> | null = null;
 
-      setCoins(validCoins);
-      setStats(statsData);
-    } catch (error) {
-      console.error('加载数据失败:', error);
-      setError('加载数据失败，请稍后重试');
-    }
-  }, [setCoins, setStats, setError]);
-
-  const setupWebSocketListeners = useCallback(() => {
-    wsService.on('connected', () => {
-      setConnected(true);
-      // WebSocket 连接时清除缓存，确保获取最新数据
-      ApiService.clearCache();
-      addNotification({
-        type: 'success',
-        title: '连接成功',
-        message: 'WebSocket连接已建立',
-      });
-    });
-
-    wsService.on('disconnected', () => {
-      setConnected(false);
-      addNotification({
-        type: 'warning',
-        title: '连接断开',
-        message: 'WebSocket连接已断开',
-      });
-    });
-
-    wsService.on('initialData', (coinsData) => {
-      // 过滤无效数据
-      const validCoins = coinsData.filter((coin: any) => coin.current_price && coin.current_price > 0);
-      setCoins(validCoins);
-      console.log('收到初始数据:', validCoins.length, '个有效币对 (过滤前:', coinsData.length, ')');
-    });
-
-    wsService.on('dataUpdate', (coinsData) => {
-      // 过滤无效数据
-      const validCoins = coinsData.filter((coin: any) => coin.current_price && coin.current_price > 0);
-      setCoins(validCoins);
-      console.log('数据更新:', validCoins.length, '个有效币对 (过滤前:', coinsData.length, ')');
-    });
-
-    wsService.on('newCoin', (coinData) => {
-      addNewCoin(coinData);
-      addNotification({
-        type: 'info',
-        title: 'Alpha上线',
-        message: `${coinData.symbol} 已在Alpha平台上线`,
-      });
-    });
-
-    wsService.on('newFutures', (coinData) => {
-      updateCoin(coinData.symbol, { futures_data: coinData.futures_data });
-      addNotification({
-        type: 'success',
-        title: '合约上线',
-        message: `${coinData.symbol} 永续合约已上线`,
-      });
-    });
-
-    wsService.on('error', (error) => {
-      console.error('WebSocket错误:', error);
-      setError('WebSocket连接错误');
-    });
-  }, [setConnected, addNotification, setCoins, addNewCoin, updateCoin, setError]);
-
-  const initializeApp = useCallback(async () => {
-    setLoading(true);
-    setError(null); // 清除之前的错误
-    try {
-      // 连接WebSocket
-      await wsService.connect();
-
-      // 获取初始数据（如果WebSocket没有发送初始数据，则通过API获取）
+    const loadCoinsViaRest = async () => {
       try {
         await loadData();
-      } catch (apiError) {
-        console.warn('API加载数据失败，等待WebSocket数据:', apiError);
-        // 不设置错误，因为WebSocket可能会提供数据
+      } catch (error) {
+        console.error('加载数据失败:', error);
+        if (!cancelled) setError('加载数据失败，请稍后重试');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    } catch (error) {
-      console.error('初始化应用失败:', error);
-      setError('初始化失败，请刷新页面重试');
-    } finally {
-      setLoading(false);
-    }
-  }, [loadData, setLoading, setError]);
+    };
+
+    const unsubscribers = [
+      wsService.on('connected', () => {
+        setConnected(true);
+        // WebSocket 连接时清除缓存，确保获取最新数据
+        ApiService.clearCache();
+        addNotification({
+          type: 'success',
+          title: '连接成功',
+          message: 'WebSocket连接已建立',
+        });
+      }),
+      wsService.on('disconnected', () => {
+        setConnected(false);
+        addNotification({
+          type: 'warning',
+          title: '连接断开',
+          message: 'WebSocket连接已断开',
+        });
+      }),
+      wsService.on('initialData', (coinsData) => {
+        if (fallbackTimer) {
+          clearTimeout(fallbackTimer);
+          fallbackTimer = null;
+        }
+        setCoins(coinsData);
+        setLoading(false);
+      }),
+      wsService.on('dataUpdate', (coinsData) => {
+        setCoins(coinsData);
+      }),
+      wsService.on('newCoin', (coinData) => {
+        // 没有价格的新币不加入列表（与后端过滤规则一致）
+        if (coinData.current_price && coinData.current_price > 0) {
+          addNewCoin(coinData);
+        }
+        addNotification({
+          type: 'info',
+          title: 'Alpha上线',
+          message: `${coinData.symbol} 已在Alpha平台上线`,
+        });
+      }),
+      wsService.on('newFutures', (coinData) => {
+        updateCoin(coinData.symbol, { futures_data: coinData.futures_data });
+        addNotification({
+          type: 'success',
+          title: '合约上线',
+          message: `${coinData.symbol} 永续合约已上线`,
+        });
+      }),
+      wsService.on('error', (error) => {
+        console.error('WebSocket错误:', error);
+      }),
+    ];
+
+    setLoading(true);
+    setError(null);
+
+    ApiService.getStats()
+      .then(stats => { if (!cancelled) setStats(stats); })
+      .catch(error => console.error('加载统计数据失败:', error));
+
+    wsService.connect()
+      .then(() => {
+        // 已连接但迟迟收不到初始数据时，退回 REST
+        fallbackTimer = setTimeout(() => {
+          fallbackTimer = null;
+          if (!cancelled) loadCoinsViaRest();
+        }, 5000);
+      })
+      .catch(error => {
+        console.warn('WebSocket连接失败，改用 REST 加载数据:', error);
+        if (!cancelled) loadCoinsViaRest();
+      });
+
+    return () => {
+      cancelled = true;
+      if (fallbackTimer) clearTimeout(fallbackTimer);
+      unsubscribers.forEach(unsubscribe => unsubscribe());
+      wsService.disconnect();
+    };
+  }, [loadData, setCoins, setStats, setLoading, setError, setConnected, addNotification, addNewCoin, updateCoin]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -287,19 +290,6 @@ const App: React.FC = () => {
   const handleCloseSnackbar = useCallback(() => {
     setCurrentNotification(null);
   }, []);
-
-  // 初始化数据
-  useEffect(() => {
-    initializeApp();
-  }, [initializeApp]);
-
-  // 监听WebSocket事件
-  useEffect(() => {
-    setupWebSocketListeners();
-    return () => {
-      wsService.disconnect();
-    };
-  }, [setupWebSocketListeners]);
 
   return (
     <ThemeProvider theme={theme}>

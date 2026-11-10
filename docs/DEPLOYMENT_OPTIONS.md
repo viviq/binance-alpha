@@ -142,7 +142,7 @@ flyctl launch
 - `backend/.env.example` - 后端环境变量
 
 ### 辅助脚本
-- `deploy-frontend.sh` - 前端部署脚本
+- `scripts/deploy-frontend.sh` - 前端部署脚本
 
 ---
 
@@ -167,7 +167,7 @@ flyctl launch
    - 跟随 QUICKSTART_VERCEL.md 步骤
 
 4. **部署前端（Vercel）**
-   - 使用 `deploy-frontend.sh` 脚本
+   - 使用 `scripts/deploy-frontend.sh` 脚本
    - 或访问 https://vercel.com
 
 5. **验证部署**

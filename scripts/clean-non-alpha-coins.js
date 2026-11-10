@@ -14,7 +14,7 @@ if (!DATABASE_URL) {
   console.error('❌ 错误：未提供数据库连接URL');
   console.error('使用方法：');
   console.error('  1. 设置环境变量: export DATABASE_URL="postgresql://..."');
-  console.error('  2. 或作为参数传递: node clean-non-alpha-coins.js "postgresql://..."');
+  console.error('  2. 或作为参数传递: node scripts/clean-non-alpha-coins.js "postgresql://..."');
   process.exit(1);
 }
 

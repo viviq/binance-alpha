@@ -12,7 +12,7 @@ const DATABASE_URL = process.env.DATABASE_URL || process.argv[2];
 if (!DATABASE_URL) {
   console.error('❌ 错误：未提供数据库连接URL');
   console.error('使用方法：');
-  console.error('  export DATABASE_URL="postgresql://..." && node verify-data-quality.js');
+  console.error('  export DATABASE_URL="postgresql://..." && node scripts/verify-data-quality.js');
   process.exit(1);
 }
 

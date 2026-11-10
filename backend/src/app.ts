@@ -11,10 +11,16 @@ import { runMigrations } from './database/migrations';
 import apiRoutes from './routes/api';
 import { WebSocketServer } from './websocket/server';
 import { DataCollector } from './services/dataCollector';
+import { parseTrustProxy } from './utils/trustProxy';
 
 const app = express();
 const server = createServer(app);
 const PORT = process.env.PORT || 3001;
+
+// 反向代理信任设置：部署在代理后（如 Railway/Nginx）时需要信任代理，
+// 否则 req.ip 都是代理地址，所有用户共用同一个限流额度。
+// TRUST_PROXY 可设为跳数（如 1）、true/false 或 IP/子网列表；生产环境默认信任 1 跳。
+app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
 
 // 创建速率限制器
 const rateLimiter = new RateLimiterMemory({
