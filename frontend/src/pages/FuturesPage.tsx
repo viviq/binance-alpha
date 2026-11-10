@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Container,
   Box,
@@ -17,6 +17,7 @@ import {
   Tooltip,
   Button,
   Snackbar,
+  TableSortLabel,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -30,6 +31,30 @@ import { zhCN } from 'date-fns/locale';
 import { CoinData } from '../types';
 import { useAppStore } from '../store/useAppStore';
 import { ApiService } from '../services/api';
+
+// 可排序的列
+type SortKey = 'listing_time' | 'fdv' | 'open_interest';
+type SortOrder = 'asc' | 'desc';
+
+const SORT_LABELS: Record<SortKey, string> = {
+  listing_time: '合约上线时间',
+  fdv: 'FDV',
+  open_interest: '未平仓量',
+};
+
+// 取排序用的数值；缺失返回 null（无论升序降序都排在最后）
+const getSortValue = (coin: CoinData, key: SortKey): number | null => {
+  switch (key) {
+    case 'listing_time': {
+      const t = Date.parse(coin.futures_data?.listing_time || '');
+      return Number.isNaN(t) ? null : t;
+    }
+    case 'fdv':
+      return coin.fdv && coin.fdv > 0 ? coin.fdv : null;
+    case 'open_interest':
+      return coin.futures_data?.open_interest ?? null;
+  }
+};
 
 interface UpcomingFuture {
   symbol: string;
@@ -46,6 +71,8 @@ const FuturesPage: React.FC = () => {
   const [futuresCoins, setFuturesCoins] = useState<CoinData[]>([]);
   const [upcomingFutures, setUpcomingFutures] = useState<UpcomingFuture[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey>('listing_time');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [snackbar, setSnackbar] = useState<{
     open: boolean;
     message: string;
@@ -66,28 +93,47 @@ const FuturesPage: React.FC = () => {
         if (!hasFutures) return false;
 
         // 必须条件2：上过Alpha（有alpha_id或alpha_listing_time）
-        const isAlphaCoin = coin.alpha_id || coin.alpha_listing_time;
-        if (!isAlphaCoin) {
-          console.warn(`跳过非Alpha币种: ${coin.symbol}`);
-          return false;
-        }
+        if (!coin.alpha_id && !coin.alpha_listing_time) return false;
 
         // 必须条件3：有有效的价格数据（避免显示空数据）
-        const hasValidData = coin.current_price && coin.current_price > 0;
-        if (!hasValidData) {
-          console.warn(`跳过无效数据的币种: ${coin.symbol}`);
-          return false;
-        }
-
-        return true;
-      })
-      .sort((a, b) => {
-        const timeA = a.futures_data?.listing_time || '';
-        const timeB = b.futures_data?.listing_time || '';
-        return timeB.localeCompare(timeA); // 降序排列，最新的在前
+        return !!coin.current_price && coin.current_price > 0;
       });
     setFuturesCoins(filtered);
   }, [coins]);
+
+  // 按当前排序列和方向排序；缺失值始终排在最后
+  const sortedCoins = useMemo(() => {
+    const direction = sortOrder === 'asc' ? 1 : -1;
+    return [...futuresCoins].sort((a, b) => {
+      const va = getSortValue(a, sortKey);
+      const vb = getSortValue(b, sortKey);
+      if (va === null && vb === null) return a.symbol.localeCompare(b.symbol);
+      if (va === null) return 1;
+      if (vb === null) return -1;
+      return va === vb ? a.symbol.localeCompare(b.symbol) : (va - vb) * direction;
+    });
+  }, [futuresCoins, sortKey, sortOrder]);
+
+  // 点击列头：同一列切换升降序；切换到新列时默认降序（最新/最大在前）
+  const handleSort = useCallback((key: SortKey) => {
+    if (key === sortKey) {
+      setSortOrder(order => (order === 'desc' ? 'asc' : 'desc'));
+    } else {
+      setSortKey(key);
+      setSortOrder('desc');
+    }
+  }, [sortKey]);
+
+  const renderSortLabel = (key: SortKey, children: React.ReactNode) => (
+    <TableSortLabel
+      active={sortKey === key}
+      direction={sortKey === key ? sortOrder : 'desc'}
+      onClick={() => handleSort(key)}
+      sx={{ whiteSpace: 'nowrap' }}
+    >
+      {children}
+    </TableSortLabel>
+  );
 
   // 获取即将上线的合约
   useEffect(() => {
@@ -203,7 +249,7 @@ const FuturesPage: React.FC = () => {
           合约上线追踪
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          显示所有已上线永续合约的币种，按合约上线时间倒序排列
+          显示所有已上线永续合约的币种，当前按{SORT_LABELS[sortKey]}{sortOrder === 'desc' ? '降序' : '升序'}排列（点击「合约上线时间」「FDV」「未平仓量」列头可切换）
         </Typography>
       </Box>
 
@@ -352,28 +398,34 @@ const FuturesPage: React.FC = () => {
             <TableRow>
               <TableCell width="80">排名</TableCell>
               <TableCell width="120">币种</TableCell>
-              <TableCell width="180">
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Schedule fontSize="small" />
-                  合约上线时间
-                </Box>
+              <TableCell width="180" sortDirection={sortKey === 'listing_time' ? sortOrder : false}>
+                {renderSortLabel('listing_time', (
+                  <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                    <Schedule fontSize="small" />
+                    合约上线时间
+                  </Box>
+                ))}
               </TableCell>
               <TableCell align="right" width="120">现货价格</TableCell>
               <TableCell align="right" width="120">合约价格</TableCell>
               <TableCell align="right" width="100">24h涨跌</TableCell>
               <TableCell align="right" width="110">流通市值</TableCell>
-              <TableCell align="right" width="110">
-                <Tooltip title="完全稀释估值 (FDV)">
-                  <span>FDV</span>
-                </Tooltip>
+              <TableCell align="right" width="110" sortDirection={sortKey === 'fdv' ? sortOrder : false}>
+                {renderSortLabel('fdv', (
+                  <Tooltip title="完全稀释估值 (FDV)">
+                    <span>FDV</span>
+                  </Tooltip>
+                ))}
               </TableCell>
-              <TableCell align="right" width="120">未平仓量</TableCell>
+              <TableCell align="right" width="120" sortDirection={sortKey === 'open_interest' ? sortOrder : false}>
+                {renderSortLabel('open_interest', '未平仓量')}
+              </TableCell>
               <TableCell align="right" width="120">24h成交量</TableCell>
               <TableCell width="100">链接</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {futuresCoins.length === 0 ? (
+            {sortedCoins.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={11} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
@@ -382,7 +434,7 @@ const FuturesPage: React.FC = () => {
                 </TableCell>
               </TableRow>
             ) : (
-              futuresCoins.map((coin, index) => (
+              sortedCoins.map((coin, index) => (
                 <TableRow
                   key={coin.symbol}
                   hover
